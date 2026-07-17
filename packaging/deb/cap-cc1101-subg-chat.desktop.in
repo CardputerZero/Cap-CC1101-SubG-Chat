@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Cap-CC1101-SubG-Chat
+Exec=/usr/share/APPLaunch/bin/M5CardputerZero-Cap-CC1101-SubG-Chat
+Terminal=false
+Icon=share/images/cap-cc1101-subg-chat.png
+Type=Application
