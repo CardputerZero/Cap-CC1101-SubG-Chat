@@ -4,6 +4,7 @@
 
 #if defined(CC1101_CHAT_ENABLE_LINUX_RADIO) && CC1101_CHAT_ENABLE_LINUX_RADIO && defined(__linux__)
 
+#include "hal/cap_spi_overlay.hpp"
 #include "hal/cardputerzero_cc1101_power.hpp"
 #include "radio/driver/cc1101.h"
 #include "radio/driver/spi_device.h"
@@ -49,6 +50,13 @@ public:
 
         std::string_view stage = "startup";
         try {
+            stage = "SPI overlay load";
+            std::string overlay_error;
+            if (!ensureCapSpiOverlay("/dev/spidev0.2", overlay_error, cancellation.nativeFlag())) {
+                cancellation.throwIfCancellationRequested();
+                throw std::runtime_error("Cap SPI overlay unavailable: " + overlay_error);
+            }
+
             stage = "Cap power enable";
             spdlog::info("CC1101 backend: enabling Cap power (pinctrl G14/G15/G26, GPIO26 and ext_5v_out LED class)");
             std::string power_error;

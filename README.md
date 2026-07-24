@@ -58,10 +58,16 @@ Key controls:
 
 ## Hardware
 
-The device build uses the Cap CC1101 at 868 MHz with 2-FSK. It requires access
-to the SPI and GPIO devices through libgpiod, the Cap pin controls, and the
-EXT5V LED-class power attribute. Grant the application user the corresponding
-`spidev`, `gpiochip`, `pinctrl`, and Cap power permissions before launching.
+The device build uses the Cap CC1101 on `/dev/spidev0.1` with kernel-managed
+CS1. Before radio initialization, the app checks the SPI node and, when needed,
+loads the BSP-provided
+`/boot/firmware/overlays/spi0-spidev2-gpio22-overlay.dtbo`. The package grants
+members of the `gpio` group passwordless access to that exact, time-limited
+`dtoverlay` command only. The overlay remains loaded until reboot.
+
+The current BSP may fail to apply the overlay at runtime. If initialization
+still reports a missing SPI node after loading, reboot once with
+`dtoverlay=spi0-spidev2-gpio22-overlay` in `/boot/firmware/config.txt`.
 Hardware initialization errors are shown on the Info page.
 
 ## Package

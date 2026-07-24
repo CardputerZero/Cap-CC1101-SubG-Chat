@@ -79,8 +79,9 @@ PACKAGE_VERSION="$(read_cmake_cache_value CMAKE_PROJECT_VERSION)"
 
 EXECUTABLE="${BUILD_DIR}/dist/${BIN_NAME}"
 DESKTOP_TEMPLATE="${SCRIPT_DIR}/cap-cc1101-subg-chat.desktop.in"
+SUDOERS_FILE="${SCRIPT_DIR}/m5cardputerzero-cap-cc1101-subg-chat.sudoers"
 ICON_FILE="${SCRIPT_DIR}/images/cap-cc1101-subg-chat.png"
-for path in "${EXECUTABLE}" "${DESKTOP_TEMPLATE}" "${ICON_FILE}"; do
+for path in "${EXECUTABLE}" "${DESKTOP_TEMPLATE}" "${SUDOERS_FILE}" "${ICON_FILE}"; do
     if [[ ! -f "${path}" ]]; then
         echo "Required file not found: ${path}" >&2
         exit 1
@@ -119,13 +120,15 @@ case "${gpiod_sonames[0]}" in
 esac
 
 rm -rf "${STAGE_DIR}"
-mkdir -p "${STAGE_DIR}/DEBIAN" "${STAGE_DIR}/usr/share/APPLaunch/bin" \
+mkdir -p "${STAGE_DIR}/DEBIAN" "${STAGE_DIR}/etc/sudoers.d" "${STAGE_DIR}/usr/share/APPLaunch/bin" \
     "${STAGE_DIR}/usr/share/APPLaunch/applications" \
     "${STAGE_DIR}/usr/share/APPLaunch/share/images" "${DIST_DIR}"
 install -m 755 "${EXECUTABLE}" "${DIST_DIR}/${BIN_NAME}"
 install -m 755 "${EXECUTABLE}" "${STAGE_DIR}/usr/share/APPLaunch/bin/${BIN_NAME}"
 install -m 644 "${DESKTOP_TEMPLATE}" \
     "${STAGE_DIR}/usr/share/APPLaunch/applications/cap-cc1101-subg-chat.desktop"
+install -m 440 "${SUDOERS_FILE}" \
+    "${STAGE_DIR}/etc/sudoers.d/m5cardputerzero-cap-cc1101-subg-chat"
 install -m 644 "${ICON_FILE}" \
     "${STAGE_DIR}/usr/share/APPLaunch/share/images/cap-cc1101-subg-chat.png"
 
@@ -137,7 +140,7 @@ Section: utils
 Priority: optional
 Architecture: ${DEB_ARCH}
 Maintainer: ${MAINTAINER}
-Depends: libc6, libstdc++6, libgcc-s1, ${GPIOD_PACKAGE_DEPENDENCY}
+Depends: libc6, libstdc++6, libgcc-s1, ${GPIOD_PACKAGE_DEPENDENCY}, raspi-utils-dt, sudo
 Installed-Size: ${INSTALLED_SIZE}
 Description: Cap CC1101 Sub-GHz chat application for M5CardputerZero APPLaunch
  Runtime-only 868 MHz 2-FSK chat for the Cap CC1101 accessory.

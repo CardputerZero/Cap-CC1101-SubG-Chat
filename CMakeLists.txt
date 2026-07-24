@@ -181,7 +181,10 @@ else()
         "${CC1101_CHAT_SRC_DIR}/radio/driver/gpio_line.cpp"
         "${CC1101_CHAT_SRC_DIR}/radio/driver/spi_device.cpp"
     )
-    list(APPEND CC1101_CHAT_HAL_CPP "${CC1101_CHAT_SRC_DIR}/hal/cardputerzero_cc1101_power.cpp")
+    list(APPEND CC1101_CHAT_HAL_CPP
+        "${CC1101_CHAT_SRC_DIR}/hal/cap_spi_overlay.cpp"
+        "${CC1101_CHAT_SRC_DIR}/hal/cardputerzero_cc1101_power.cpp"
+    )
 endif()
 
 add_executable(${CC1101_CHAT_BIN_NAME}

@@ -1,0 +1,1 @@
+%gpio ALL=(root) NOPASSWD: /usr/bin/timeout --signal=KILL 5s /usr/bin/dtoverlay -d /boot/firmware/overlays spi0-spidev2-gpio22-overlay
