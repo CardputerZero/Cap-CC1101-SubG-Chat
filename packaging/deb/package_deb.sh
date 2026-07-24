@@ -88,6 +88,10 @@ for path in "${EXECUTABLE}" "${DESKTOP_TEMPLATE}" "${SUDOERS_FILE}" "${ICON_FILE
     fi
 done
 
+if command -v visudo >/dev/null 2>&1; then
+    visudo -c -f "${SUDOERS_FILE}"
+fi
+
 machine="$(${READELF_BIN} -h "${EXECUTABLE}" | awk -F: '/Machine:/ { sub(/^[[:space:]]+/, "", $2); print $2; exit }')"
 if [[ "${machine}" != "AArch64" ]]; then
     echo "Invalid package executable architecture: expected AArch64, got ${machine:-unknown}." >&2

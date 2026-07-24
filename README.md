@@ -61,9 +61,13 @@ Key controls:
 The device build uses the Cap CC1101 on `/dev/spidev0.1` with kernel-managed
 CS1. Before radio initialization, the app checks the SPI node and, when needed,
 loads the BSP-provided
-`/boot/firmware/overlays/spi0-spidev2-gpio22-overlay.dtbo`. The package grants
-members of the `gpio` group passwordless access to that exact, time-limited
-`dtoverlay` command only. The overlay remains loaded until reboot.
+`/boot/firmware/overlays/spi0-spidev2-gpio22-overlay.dtbo`. The overlay remains
+loaded until reboot.
+
+The Debian package launches this hardware app as root through a non-interactive,
+command-specific sudo rule for members of the `gpio` group. The rule permits
+only the installed binary with no command arguments. This is currently needed
+for the Cap power controls exposed through the LED-class interface.
 
 The current BSP may fail to apply the overlay at runtime. If initialization
 still reports a missing SPI node after loading, reboot once with
