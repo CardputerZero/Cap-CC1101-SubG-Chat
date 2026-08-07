@@ -1,9 +1,13 @@
 #include "radio/radio_worker.hpp"
 
+#include "radio/chat_protocol.hpp"
+
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <exception>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -11,7 +15,47 @@
 namespace cc1101_chat::radio {
 namespace {
 
-constexpr auto kReceiveSlice = std::chrono::milliseconds(40);
+constexpr auto kReceiveSlice               = std::chrono::milliseconds(40);
+constexpr auto kAcknowledgementTimeout     = std::chrono::milliseconds(1200);
+constexpr auto kAcknowledgementTurnaround  = std::chrono::milliseconds(240);
+constexpr auto kPeerRxRecovery             = std::chrono::milliseconds(260);
+constexpr std::size_t kMaximumSendAttempts = 3;
+constexpr std::size_t kRecentTokenCapacity = 64;
+constexpr uint32_t kProtocolTokenMask      = 0x00FFFFFFU;
+static_assert(protocol::kHeaderSize + protocol::kMaxMessageSize == kMaxPayloadSize);
+
+void cancellableSleep(std::chrono::milliseconds duration, const CancellationToken& cancellation)
+{
+    const auto deadline = std::chrono::steady_clock::now() + duration;
+    while (std::chrono::steady_clock::now() < deadline) {
+        cancellation.throwIfCancellationRequested();
+        const auto remaining =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+        std::this_thread::sleep_for(
+            std::min(std::chrono::milliseconds(10), std::max(remaining, std::chrono::milliseconds(1))));
+    }
+    cancellation.throwIfCancellationRequested();
+}
+
+uint32_t randomProtocolToken()
+{
+    uint32_t value = static_cast<uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count() &
+                                           static_cast<int64_t>(kProtocolTokenMask));
+    try {
+        std::random_device random;
+        value ^= static_cast<uint32_t>(random());
+        value ^= static_cast<uint32_t>(random()) << 8U;
+    } catch (...) {
+    }
+    value &= kProtocolTokenMask;
+    return value == 0 ? 1 : value;
+}
+
+std::chrono::milliseconds retryBackoff(uint32_t token, std::size_t attempt)
+{
+    const uint32_t mixed = token ^ static_cast<uint32_t>(attempt * 0x45D9F3U);
+    return std::chrono::milliseconds(80 + static_cast<int>(mixed % 121U));
+}
 
 std::string exceptionMessage(const std::exception& exception)
 {
@@ -59,6 +103,8 @@ bool RadioWorker::start(bool receive_on_start)
 
     _receive_on_start       = receive_on_start;
     _initialization_attempt = 0;
+    _next_protocol_token    = randomProtocolToken();
+    _recent_rx_tokens.clear();
     _stop_requested.store(false, std::memory_order_release);
     _running.store(true, std::memory_order_release);
     try {
@@ -87,7 +133,7 @@ RadioPostResult RadioWorker::post(RadioCommand command)
         if (send->payload.empty()) {
             return RadioPostResult::EmptyPayload;
         }
-        if (send->payload.size() > kMaxPayloadSize) {
+        if (send->payload.size() > protocol::kMaxMessageSize) {
             return RadioPostResult::PayloadTooLarge;
         }
     }
@@ -160,7 +206,7 @@ void RadioWorker::run()
                 RadioPacket packet;
                 try {
                     if (_backend->receive(packet, kReceiveSlice, cancellation)) {
-                        pushEvent(RadioRxPacketEvent{std::move(packet)});
+                        (void)processReceivedPacket(std::move(packet), 0, receive_requested, cancellation);
                     }
                 } catch (const RadioCancelled&) {
                     throw;
@@ -286,21 +332,50 @@ void RadioWorker::handleSend(RadioSendCommand command, bool& initialized, bool r
         pushEvent(RadioTxFailedEvent{command.id, "radio is not initialized"});
         return;
     }
-    if (command.payload.empty() || command.payload.size() > kMaxPayloadSize) {
-        pushEvent(RadioTxFailedEvent{command.id, "payload must contain 1 to 61 bytes"});
+    if (command.payload.empty() || command.payload.size() > protocol::kMaxMessageSize) {
+        pushEvent(RadioTxFailedEvent{command.id, "payload must contain 1 to 56 bytes"});
         return;
     }
 
     pushEvent(RadioTxStartedEvent{command.id, command.payload.size()});
     pushState(RadioState::Sending, "Sending");
     try {
-        if (receive_requested) {
-            _backend->stopReceive();
-        }
-        _backend->transmit(command.payload, cancellation);
-        pushEvent(RadioTxCompletedEvent{command.id});
-        if (receive_requested) {
+        const uint32_t token             = nextProtocolToken();
+        const std::vector<uint8_t> frame = protocol::encodeData(token, command.payload);
+        bool acknowledged                = false;
+
+        for (std::size_t attempt = 1; attempt <= kMaximumSendAttempts; ++attempt) {
+            spdlog::info("CC1101 radio: sending message id={} token=0x{:06X} attempt={}/{} bytes={}", command.id, token,
+                         attempt, kMaximumSendAttempts, command.payload.size());
+            if (receive_requested) {
+                _backend->stopReceive();
+            }
+            _backend->transmit(frame, cancellation);
+            if (!receive_requested) {
+                acknowledged = true;
+                break;
+            }
+
             _backend->startReceive(cancellation);
+            if (waitForAcknowledgement(token, receive_requested, cancellation)) {
+                acknowledged = true;
+                cancellableSleep(kPeerRxRecovery, cancellation);
+                break;
+            }
+
+            spdlog::warn("CC1101 radio: acknowledgement timeout id={} token=0x{:06X} attempt={}/{}", command.id, token,
+                         attempt, kMaximumSendAttempts);
+            if (attempt < kMaximumSendAttempts) {
+                cancellableSleep(retryBackoff(token, attempt), cancellation);
+            }
+        }
+
+        if (acknowledged) {
+            pushEvent(RadioTxCompletedEvent{command.id});
+        } else {
+            pushEvent(RadioTxFailedEvent{command.id, "no acknowledgement after 3 attempts"});
+        }
+        if (receive_requested) {
             pushState(RadioState::Receiving, "Receiving");
         } else {
             pushState(RadioState::Idle, "Radio idle");
@@ -324,6 +399,98 @@ void RadioWorker::handleSend(RadioSendCommand command, bool& initialized, bool r
         initialized = false;
         pushState(RadioState::Error, "Send failed; retry required");
     }
+}
+
+bool RadioWorker::waitForAcknowledgement(uint32_t token, bool receive_requested, const CancellationToken& cancellation)
+{
+    const auto deadline = std::chrono::steady_clock::now() + kAcknowledgementTimeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        cancellation.throwIfCancellationRequested();
+        const auto remaining =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+        RadioPacket packet;
+        if (_backend->receive(packet, std::min(kReceiveSlice, std::max(remaining, std::chrono::milliseconds(1))),
+                              cancellation) &&
+            processReceivedPacket(std::move(packet), token, receive_requested, cancellation)) {
+            spdlog::info("CC1101 radio: acknowledgement received token=0x{:06X}", token);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool RadioWorker::processReceivedPacket(RadioPacket packet, uint32_t expected_ack, bool receive_requested,
+                                        const CancellationToken& cancellation)
+{
+    if (!packet.crc_ok) {
+        spdlog::warn("CC1101 radio: discarded packet with bad CRC (bytes={}, RSSI={:.1f}, LQI={})", packet.data.size(),
+                     packet.rssi_dbm, static_cast<unsigned>(packet.lqi));
+        return false;
+    }
+
+    protocol::DecodedFrame frame = protocol::decode(packet.data);
+    switch (frame.kind) {
+        case protocol::FrameKind::Legacy:
+            pushEvent(RadioRxPacketEvent{std::move(packet)});
+            return false;
+        case protocol::FrameKind::Malformed:
+            spdlog::warn("CC1101 radio: discarded malformed chat frame (bytes={})", packet.data.size());
+            return false;
+        case protocol::FrameKind::Acknowledgement:
+            if (expected_ack != 0 && frame.token == expected_ack) {
+                return true;
+            }
+            spdlog::debug("CC1101 radio: ignored stale acknowledgement token=0x{:06X}", frame.token);
+            return false;
+        case protocol::FrameKind::Data:
+            break;
+    }
+
+    const bool duplicate = recentlyReceived(frame.token);
+    if (receive_requested) {
+        acknowledge(frame.token, cancellation);
+    }
+    if (duplicate) {
+        spdlog::info("CC1101 radio: acknowledged duplicate message token=0x{:06X}", frame.token);
+        return false;
+    }
+
+    rememberReceived(frame.token);
+    packet.data = std::move(frame.payload);
+    pushEvent(RadioRxPacketEvent{std::move(packet)});
+    return false;
+}
+
+void RadioWorker::acknowledge(uint32_t token, const CancellationToken& cancellation)
+{
+    cancellableSleep(kAcknowledgementTurnaround, cancellation);
+    _backend->stopReceive();
+    spdlog::debug("CC1101 radio: transmitting acknowledgement token=0x{:06X}", token);
+    _backend->transmit(protocol::encodeAcknowledgement(token), cancellation);
+    _backend->startReceive(cancellation);
+}
+
+uint32_t RadioWorker::nextProtocolToken()
+{
+    const uint32_t token = _next_protocol_token;
+    _next_protocol_token = (_next_protocol_token + 1U) & kProtocolTokenMask;
+    if (_next_protocol_token == 0) {
+        _next_protocol_token = 1;
+    }
+    return token;
+}
+
+bool RadioWorker::recentlyReceived(uint32_t token) const
+{
+    return std::find(_recent_rx_tokens.begin(), _recent_rx_tokens.end(), token) != _recent_rx_tokens.end();
+}
+
+void RadioWorker::rememberReceived(uint32_t token)
+{
+    if (_recent_rx_tokens.size() >= kRecentTokenCapacity) {
+        _recent_rx_tokens.pop_front();
+    }
+    _recent_rx_tokens.push_back(token);
 }
 
 void RadioWorker::pushEvent(RadioEvent event)

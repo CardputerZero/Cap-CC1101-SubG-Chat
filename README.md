@@ -5,9 +5,10 @@ Runtime-only Sub-GHz chat app for M5Stack CardputerZero and the Cap CC1101 acces
 ## Features
 
 - Send and receive messages over the verified 868 MHz low-rate 2-FSK profile (not LoRa)
+- Acknowledge and retry messages automatically, while suppressing retransmission duplicates
 - Show received signal strength and link-quality metadata
 - Keep up to 64 messages in memory for the current session only
-- Accept messages up to 61 printable ASCII bytes
+- Accept messages up to 56 printable ASCII bytes
 - Use an SDL mock radio for desktop development without CC1101 hardware
 
 ## Dependencies

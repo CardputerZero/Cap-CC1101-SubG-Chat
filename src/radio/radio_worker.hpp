@@ -5,6 +5,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -52,6 +53,8 @@ private:
     std::atomic_bool _stop_requested{false};
     bool _receive_on_start              = true;
     std::size_t _initialization_attempt = 0;
+    uint32_t _next_protocol_token       = 1;
+    std::deque<uint32_t> _recent_rx_tokens;
 
     mutable std::mutex _command_mutex;
     std::condition_variable _command_cv;
@@ -68,6 +71,13 @@ private:
                        const CancellationToken& cancellation);
     void handleSend(RadioSendCommand command, bool& initialized, bool receive_requested,
                     const CancellationToken& cancellation);
+    bool waitForAcknowledgement(uint32_t token, bool receive_requested, const CancellationToken& cancellation);
+    bool processReceivedPacket(RadioPacket packet, uint32_t expected_ack, bool receive_requested,
+                               const CancellationToken& cancellation);
+    void acknowledge(uint32_t token, const CancellationToken& cancellation);
+    uint32_t nextProtocolToken();
+    bool recentlyReceived(uint32_t token) const;
+    void rememberReceived(uint32_t token);
     void pushEvent(RadioEvent event);
     void pushState(RadioState state, std::string detail = {});
 };

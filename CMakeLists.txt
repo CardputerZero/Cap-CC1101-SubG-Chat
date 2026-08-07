@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(M5CardputerZeroCapCC1101SubGChat VERSION 0.1.2 LANGUAGES C CXX ASM)
+project(M5CardputerZeroCapCC1101SubGChat VERSION 0.1.3 LANGUAGES C CXX ASM)
 
 option(CC1101_CHAT_USE_SDL "Use LVGL's SDL backend and mock radio" ON)
+option(BUILD_TESTING "Build CC1101 Chat tests" OFF)
 set(CC1101_CHAT_BIN_NAME "M5CardputerZero-Cap-CC1101-SubG-Chat" CACHE STRING "Output executable name")
 set(CC1101_CHAT_DEPS_DIR "${CMAKE_CURRENT_LIST_DIR}/dependencies" CACHE PATH "Third-party source directory")
 set(CC1101_CHAT_OUTPUT_DIR "${CMAKE_CURRENT_LIST_DIR}/dist" CACHE PATH "Runtime output directory")
@@ -125,6 +126,7 @@ file(GLOB CC1101_CHAT_APP_CPP CONFIGURE_DEPENDS
 
 set(CC1101_CHAT_RADIO_CPP
     "${CC1101_CHAT_SRC_DIR}/radio/radio_backend.cpp"
+    "${CC1101_CHAT_SRC_DIR}/radio/chat_protocol.cpp"
     "${CC1101_CHAT_SRC_DIR}/radio/radio_worker.cpp"
 )
 set(CC1101_CHAT_HAL_CPP "${CC1101_CHAT_SRC_DIR}/hal/cc1101_chat_lvgl_hal.cpp")
@@ -221,3 +223,28 @@ endif()
 set_target_properties(${CC1101_CHAT_BIN_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CC1101_CHAT_OUTPUT_DIR}"
 )
+
+if(BUILD_TESTING)
+    enable_testing()
+    add_executable(cc1101_chat_protocol_tests
+        tests/chat_protocol_test.cpp
+        src/radio/chat_protocol.cpp
+    )
+    target_include_directories(cc1101_chat_protocol_tests PRIVATE "${CC1101_CHAT_SRC_DIR}")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(cc1101_chat_protocol_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME cc1101_chat_protocol COMMAND cc1101_chat_protocol_tests)
+
+    add_executable(cc1101_chat_radio_worker_tests
+        tests/radio_worker_test.cpp
+        src/radio/chat_protocol.cpp
+        src/radio/radio_worker.cpp
+    )
+    target_include_directories(cc1101_chat_radio_worker_tests PRIVATE "${CC1101_CHAT_SRC_DIR}")
+    target_link_libraries(cc1101_chat_radio_worker_tests PRIVATE spdlog::spdlog Threads::Threads)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(cc1101_chat_radio_worker_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME cc1101_chat_radio_worker COMMAND cc1101_chat_radio_worker_tests)
+endif()

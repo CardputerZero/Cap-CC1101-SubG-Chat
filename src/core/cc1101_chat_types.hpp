@@ -67,7 +67,7 @@ struct ChatScrollRequest {
 };
 
 constexpr std::size_t kMessageHistoryLimit = 64;
-constexpr std::size_t kMaxMessageBytes     = 61;
+constexpr std::size_t kMaxMessageBytes     = 56;
 constexpr int32_t kMessageScrollStep       = 36;
 
 const char* pageIdName(PageId page);

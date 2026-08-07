@@ -287,7 +287,7 @@ void ChatModel::appendDraft(char character)
     }
     std::string value = _draft.get();
     if (value.size() >= kMaxMessageBytes) {
-        setComposeStatus("61 byte limit");
+        setComposeStatus("56 byte limit");
         return;
     }
     value.push_back(character);
