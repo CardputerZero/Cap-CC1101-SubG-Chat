@@ -15,13 +15,14 @@
 namespace cc1101_chat::radio {
 namespace {
 
-constexpr auto kReceiveSlice               = std::chrono::milliseconds(40);
-constexpr auto kAcknowledgementTimeout     = std::chrono::milliseconds(1200);
-constexpr auto kAcknowledgementTurnaround  = std::chrono::milliseconds(240);
-constexpr auto kPeerRxRecovery             = std::chrono::milliseconds(260);
-constexpr std::size_t kMaximumSendAttempts = 3;
-constexpr std::size_t kRecentTokenCapacity = 64;
-constexpr uint32_t kProtocolTokenMask      = 0x00FFFFFFU;
+constexpr auto kReceiveSlice                  = std::chrono::milliseconds(40);
+constexpr auto kAcknowledgementTimeout        = std::chrono::milliseconds(1800);
+constexpr auto kAcknowledgementTurnaround     = std::chrono::milliseconds(240);
+constexpr auto kPeerRxRecovery                = std::chrono::milliseconds(800);
+constexpr std::size_t kMaximumSendAttempts    = 5;
+constexpr std::size_t kAcknowledgementRepeats = 2;
+constexpr std::size_t kRecentTokenCapacity    = 64;
+constexpr uint32_t kProtocolTokenMask         = 0x00FFFFFFU;
 static_assert(protocol::kHeaderSize + protocol::kMaxMessageSize == kMaxPayloadSize);
 
 void cancellableSleep(std::chrono::milliseconds duration, const CancellationToken& cancellation)
@@ -373,7 +374,7 @@ void RadioWorker::handleSend(RadioSendCommand command, bool& initialized, bool r
         if (acknowledged) {
             pushEvent(RadioTxCompletedEvent{command.id});
         } else {
-            pushEvent(RadioTxFailedEvent{command.id, "no acknowledgement after 3 attempts"});
+            pushEvent(RadioTxFailedEvent{command.id, "no acknowledgement after 5 attempts"});
         }
         if (receive_requested) {
             pushState(RadioState::Receiving, "Receiving");
@@ -447,17 +448,18 @@ bool RadioWorker::processReceivedPacket(RadioPacket packet, uint32_t expected_ac
     }
 
     const bool duplicate = recentlyReceived(frame.token);
+    if (!duplicate) {
+        rememberReceived(frame.token);
+        packet.data = std::move(frame.payload);
+        pushEvent(RadioRxPacketEvent{std::move(packet)});
+    }
+
     if (receive_requested) {
         acknowledge(frame.token, cancellation);
     }
     if (duplicate) {
         spdlog::info("CC1101 radio: acknowledged duplicate message token=0x{:06X}", frame.token);
-        return false;
     }
-
-    rememberReceived(frame.token);
-    packet.data = std::move(frame.payload);
-    pushEvent(RadioRxPacketEvent{std::move(packet)});
     return false;
 }
 
@@ -465,8 +467,12 @@ void RadioWorker::acknowledge(uint32_t token, const CancellationToken& cancellat
 {
     cancellableSleep(kAcknowledgementTurnaround, cancellation);
     _backend->stopReceive();
-    spdlog::debug("CC1101 radio: transmitting acknowledgement token=0x{:06X}", token);
-    _backend->transmit(protocol::encodeAcknowledgement(token), cancellation);
+    const auto acknowledgement = protocol::encodeAcknowledgement(token);
+    for (std::size_t repeat = 0; repeat < kAcknowledgementRepeats; ++repeat) {
+        spdlog::debug("CC1101 radio: transmitting acknowledgement token=0x{:06X} repeat={}/{}", token, repeat + 1,
+                      kAcknowledgementRepeats);
+        _backend->transmit(acknowledgement, cancellation);
+    }
     _backend->startReceive(cancellation);
 }
 
