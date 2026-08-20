@@ -93,7 +93,7 @@ constexpr uint8_t PKT_FORMAT_NORMAL                   = 0x00;
 constexpr uint8_t SYNC_MODE_16_16                     = 0x02;
 constexpr uint8_t FS_AUTOCAL_IDLE_TO_RXTX             = 0x10;
 constexpr uint8_t PIN_CTRL_OFF                        = 0x00;
-constexpr uint8_t RXOFF_IDLE                          = 0x00;
+constexpr uint8_t RXOFF_RX                            = 0x30;
 constexpr uint8_t TXOFF_IDLE                          = 0x00;
 constexpr size_t FIFO_SIZE                            = 64;
 constexpr size_t MAX_PACKET                           = 255;
@@ -378,7 +378,9 @@ void CC1101Radio::configurePacketMode()
     setRegBits(REG_PKTCTRL0, WHITE_DATA_OFF | PKT_FORMAT_NORMAL, 6, 4);
     setRegBits(REG_PKTCTRL0, CRC_ON | LENGTH_VARIABLE, 2, 0);
     writeRegRaw(REG_ADDR, 0x00);
-    setRegBits(REG_MCSM1, RXOFF_IDLE | TXOFF_IDLE, 3, 0);
+    // Keep RX active after a packet so receive() can drain the FIFO without
+    // introducing an IDLE -> RX gap. TX still returns to IDLE explicitly.
+    setRegBits(REG_MCSM1, RXOFF_RX | TXOFF_IDLE, 5, 2);
 }
 
 void CC1101Radio::setFrequency(float freq_mhz)
@@ -630,9 +632,11 @@ bool CC1101Radio::receive(RxPacket& packet, int timeout_ms, const std::atomic_bo
         packet.rssi_dbm = rssiFromRaw(raw_rssi_);
         packet.lqi      = raw_lqi_;
         packet.crc_ok   = (lqi_crc & CRC_OK) != 0;
-        standby();
-        flushRx();
-        startReceive();
+
+        // MCSM1 keeps the transceiver in RX after packet reception. Leave it
+        // there while the worker handles the frame so the next packet does
+        // not encounter an avoidable IDLE/flush/RX gap. The ACK path calls
+        // stopReceive() explicitly before switching to TX.
         return true;
     }
 }
