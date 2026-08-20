@@ -1,9 +1,12 @@
 #include "hal/cc1101_chat_lvgl_hal.hpp"
 
 #include <spdlog/spdlog.h>
+#include <atomic>
 #include <cstdlib>
 
 #if LV_USE_SDL
+#include <SDL2/SDL.h>
+
 #include "src/drivers/sdl/lv_sdl_keyboard.h"
 #include "src/drivers/sdl/lv_sdl_mouse.h"
 #include "src/drivers/sdl/lv_sdl_window.h"
@@ -13,6 +16,8 @@
 
 namespace cc1101_chat {
 namespace {
+
+std::atomic_bool g_quit_requested{false};
 
 const char* envOrDefault(const char* name, const char* fallback)
 {
@@ -32,10 +37,29 @@ float envFloatOrDefault(const char* name, float fallback)
     return end && end != value && parsed > 0.0f ? parsed : fallback;
 }
 
+#if LV_USE_SDL
+SDL_EventFilter g_previous_event_filter = nullptr;
+void* g_previous_event_filter_data      = nullptr;
+Uint32 g_window_id                      = 0;
+
+int SDLCALL filterSdlEvent(void* userData, SDL_Event* event)
+{
+    (void)userData;
+    if (event &&
+        (event->type == SDL_QUIT || (event->type == SDL_WINDOWEVENT && event->window.event == SDL_WINDOWEVENT_CLOSE &&
+                                     event->window.windowID == g_window_id))) {
+        g_quit_requested.store(true, std::memory_order_release);
+        return 0;
+    }
+    return g_previous_event_filter ? g_previous_event_filter(g_previous_event_filter_data, event) : 1;
+}
+#endif
+
 }  // namespace
 
 bool initLvglHal(int32_t width, int32_t height)
 {
+    g_quit_requested.store(false, std::memory_order_release);
 #if LV_USE_SDL
     lv_display_t* disp = lv_sdl_window_create(width, height);
     if (!disp) {
@@ -52,6 +76,9 @@ bool initLvglHal(int32_t width, int32_t height)
     if (!lv_sdl_keyboard_create()) {
         spdlog::warn("Cap-CC1101-SubG-Chat HAL: failed to create SDL keyboard input");
     }
+    g_window_id = SDL_GetWindowID(lv_sdl_window_get_window(disp));
+    SDL_GetEventFilter(&g_previous_event_filter, &g_previous_event_filter_data);
+    SDL_SetEventFilter(filterSdlEvent, nullptr);
     return true;
 #elif LV_USE_LINUX_FBDEV
     (void)width;
@@ -65,6 +92,8 @@ bool initLvglHal(int32_t width, int32_t height)
     const char* device = envOrDefault("LV_LINUX_FBDEV_DEVICE", "/dev/fb0");
     if (lv_linux_fbdev_set_file(disp, device) != LV_RESULT_OK) {
         spdlog::error("Cap-CC1101-SubG-Chat HAL: failed to open framebuffer {}", device);
+        lv_display_delete(disp);
+        lv_deinit();
         return false;
     }
     return true;
@@ -74,10 +103,24 @@ bool initLvglHal(int32_t width, int32_t height)
 #endif
 }
 
+bool lvglHalQuitRequested() noexcept
+{
+    return g_quit_requested.load(std::memory_order_acquire);
+}
+
 void shutdownLvglHal()
 {
 #if LV_USE_SDL
+    SDL_SetEventFilter(g_previous_event_filter, g_previous_event_filter_data);
+    g_previous_event_filter      = nullptr;
+    g_previous_event_filter_data = nullptr;
+    g_window_id                  = 0;
     lv_sdl_quit();
+#elif LV_USE_LINUX_FBDEV
+    if (lv_display_t* display = lv_display_get_default()) {
+        lv_display_delete(display);
+    }
+    lv_deinit();
 #endif
 }
 
