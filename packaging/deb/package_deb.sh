@@ -145,7 +145,7 @@ Section: utils
 Priority: optional
 Architecture: ${DEB_ARCH}
 Maintainer: ${MAINTAINER}
-Depends: libc6, libstdc++6, libgcc-s1, ${GPIOD_PACKAGE_DEPENDENCY}, raspi-utils-dt, sudo
+Depends: libc6, libstdc++6, libgcc-s1, ${GPIOD_PACKAGE_DEPENDENCY}, raspi-utils-core, sudo
 Installed-Size: ${INSTALLED_SIZE}
 Description: Cap CC1101 Sub-GHz chat application for M5CardputerZero APPLaunch
  Runtime-only 868 MHz 2-FSK chat for the Cap CC1101 accessory.

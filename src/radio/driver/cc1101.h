@@ -57,6 +57,7 @@ public:
     void begin(const RadioConfig& cfg, const std::atomic_bool* cancel = nullptr);
     void startReceive();
     void idle();
+    void releaseHostControlLines() noexcept;
     bool receive(RxPacket& packet, int timeout_ms, const std::atomic_bool* cancel = nullptr);
     bool receiveFixed(RxPacket& packet, size_t len, int timeout_ms);
     std::vector<uint8_t> rawReceive(size_t max_len, int timeout_ms);

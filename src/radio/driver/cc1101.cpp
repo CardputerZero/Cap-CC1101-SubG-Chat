@@ -560,6 +560,21 @@ void CC1101Radio::idle()
     selectAntenna();
 }
 
+void CC1101Radio::releaseHostControlLines() noexcept
+{
+    try {
+        if (rf_sw0_.valid()) {
+            rf_sw0_.setValue(false);
+        }
+    } catch (...) {
+    }
+
+    gdo0_.unexportLine();
+    rf_sw0_.unexportLine();
+    reset_.unexportLine();
+    cs_.unexportLine();
+}
+
 bool CC1101Radio::waitForRxBytesAtLeast(uint8_t min_bytes, int timeout_ms, const std::atomic_bool* cancel)
 {
     auto start = std::chrono::steady_clock::now();

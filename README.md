@@ -60,19 +60,15 @@ Key controls:
 ## Hardware
 
 The device build uses the Cap CC1101 on `/dev/spidev0.1` with kernel-managed
-CS1. Before radio initialization, the app checks the SPI node and, when needed,
-loads the BSP-provided
-`/boot/firmware/overlays/spi0-spidev2-gpio22-overlay.dtbo`. The overlay remains
-loaded until reboot.
+CS1. It does not require the CS2/GPIO22 overlay used by the Cap's NFC controller.
+On the current LED-class BSP, the app restores the pinmux and EXT5V state it
+changed before returning to APPLaunch.
 
 The Debian package launches this hardware app as root through a non-interactive,
 command-specific sudo rule for members of the `gpio` group. The rule permits
 only the installed binary with no command arguments. This is currently needed
 for the Cap power controls exposed through the LED-class interface.
 
-The current BSP may fail to apply the overlay at runtime. If initialization
-still reports a missing SPI node after loading, reboot once with
-`dtoverlay=spi0-spidev2-gpio22-overlay` in `/boot/firmware/config.txt`.
 Hardware initialization errors are shown on the Info page.
 
 ## Package

@@ -24,7 +24,9 @@ private:
     std::unique_ptr<Impl> _impl;
 
     static bool runPinctrl(const std::vector<std::string>& arguments, std::string& error,
-                           const std::atomic_bool* cancel);
+                           const std::atomic_bool* cancel, int timeout_ms = 2000);
+    static bool runPinctrlCapture(const std::vector<std::string>& arguments, std::string& output, std::string& error,
+                                  const std::atomic_bool* cancel);
 };
 
 }  // namespace cc1101_chat

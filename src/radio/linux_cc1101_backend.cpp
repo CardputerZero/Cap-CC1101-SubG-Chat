@@ -4,7 +4,6 @@
 
 #if defined(CC1101_CHAT_ENABLE_LINUX_RADIO) && CC1101_CHAT_ENABLE_LINUX_RADIO && defined(__linux__)
 
-#include "hal/cap_spi_overlay.hpp"
 #include "hal/cardputerzero_cc1101_power.hpp"
 #include "radio/driver/cc1101.h"
 #include "radio/driver/spi_device.h"
@@ -50,13 +49,6 @@ public:
 
         std::string_view stage = "startup";
         try {
-            stage = "SPI overlay load";
-            std::string overlay_error;
-            if (!ensureCapSpiOverlay("/dev/spidev0.2", overlay_error, cancellation.nativeFlag())) {
-                cancellation.throwIfCancellationRequested();
-                throw std::runtime_error("Cap SPI overlay unavailable: " + overlay_error);
-            }
-
             stage = "Cap power enable";
             spdlog::info("CC1101 backend: enabling Cap power (pinctrl G14/G15/G26, GPIO26 and ext_5v_out LED class)");
             std::string power_error;
@@ -133,12 +125,15 @@ public:
 
     void close() noexcept override
     {
+        const bool had_hardware_state = _radio || _spi || _power.enabled();
+        if (had_hardware_state) {
+            spdlog::info("CC1101 backend: shutting down radio, SPI, Cap power, and control pins");
+        }
         _receiving = false;
         if (_radio) {
-            try {
-                _radio->idle();
-            } catch (...) {
-            }
+            // Teardown must not depend on a potentially wedged SPI ioctl: APPLaunch
+            // force-kills the process if graceful shutdown exceeds its deadline.
+            _radio->releaseHostControlLines();
             _radio.reset();
         }
         if (_spi) {
@@ -147,6 +142,9 @@ public:
         }
         _power.disable();
         _open = false;
+        if (had_hardware_state) {
+            spdlog::info("CC1101 backend: hardware shutdown sequence finished");
+        }
     }
 
     void startReceive(const CancellationToken& cancellation) override
