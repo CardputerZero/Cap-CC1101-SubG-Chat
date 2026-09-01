@@ -15,14 +15,18 @@
 namespace cc1101_chat::radio {
 namespace {
 
-constexpr auto kReceiveSlice                  = std::chrono::milliseconds(40);
-constexpr auto kAcknowledgementTimeout        = std::chrono::milliseconds(1800);
-constexpr auto kAcknowledgementTurnaround     = std::chrono::milliseconds(240);
-constexpr auto kPeerRxRecovery                = std::chrono::milliseconds(800);
-constexpr std::size_t kMaximumSendAttempts    = 5;
-constexpr std::size_t kAcknowledgementRepeats = 2;
-constexpr std::size_t kRecentTokenCapacity    = 64;
-constexpr uint32_t kProtocolTokenMask         = 0x00FFFFFFU;
+#if defined(CC1101_CHAT_TEST_FAST_RADIO_TIMING)
+constexpr auto kReceiveSlice              = std::chrono::milliseconds(2);
+constexpr auto kAcknowledgementTimeout    = std::chrono::milliseconds(20);
+constexpr auto kAcknowledgementTurnaround = std::chrono::milliseconds(2);
+#else
+constexpr auto kReceiveSlice              = std::chrono::milliseconds(40);
+constexpr auto kAcknowledgementTimeout    = std::chrono::milliseconds(1800);
+constexpr auto kAcknowledgementTurnaround = std::chrono::milliseconds(240);
+#endif
+constexpr std::size_t kMaximumSendAttempts = 5;
+constexpr std::size_t kRecentTokenCapacity = 64;
+constexpr uint32_t kProtocolTokenMask      = 0x00FFFFFFU;
 static_assert(protocol::kHeaderSize + protocol::kMaxMessageSize == kMaxPayloadSize);
 
 void cancellableSleep(std::chrono::milliseconds duration, const CancellationToken& cancellation)
@@ -360,7 +364,6 @@ void RadioWorker::handleSend(RadioSendCommand command, bool& initialized, bool r
             _backend->startReceive(cancellation);
             if (waitForAcknowledgement(token, receive_requested, cancellation)) {
                 acknowledged = true;
-                cancellableSleep(kPeerRxRecovery, cancellation);
                 break;
             }
 
@@ -369,6 +372,11 @@ void RadioWorker::handleSend(RadioSendCommand command, bool& initialized, bool r
             if (attempt < kMaximumSendAttempts) {
                 cancellableSleep(retryBackoff(token, attempt), cancellation);
             }
+        }
+
+        if (!acknowledged && receive_requested) {
+            spdlog::info("CC1101 radio: resetting RX after final acknowledgement timeout token=0x{:06X}", token);
+            _backend->startReceive(cancellation);
         }
 
         if (acknowledged) {
@@ -468,11 +476,8 @@ void RadioWorker::acknowledge(uint32_t token, const CancellationToken& cancellat
     cancellableSleep(kAcknowledgementTurnaround, cancellation);
     _backend->stopReceive();
     const auto acknowledgement = protocol::encodeAcknowledgement(token);
-    for (std::size_t repeat = 0; repeat < kAcknowledgementRepeats; ++repeat) {
-        spdlog::debug("CC1101 radio: transmitting acknowledgement token=0x{:06X} repeat={}/{}", token, repeat + 1,
-                      kAcknowledgementRepeats);
-        _backend->transmit(acknowledgement, cancellation);
-    }
+    spdlog::debug("CC1101 radio: transmitting acknowledgement token=0x{:06X}", token);
+    _backend->transmit(acknowledgement, cancellation);
     _backend->startReceive(cancellation);
 }
 

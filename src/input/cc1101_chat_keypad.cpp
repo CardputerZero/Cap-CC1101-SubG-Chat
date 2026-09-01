@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <utility>
 
 #if !LV_USE_SDL && defined(__linux__)
@@ -78,30 +79,27 @@ const char* debugKeyUtf8(uint32_t key)
     return text;
 }
 
-struct Tca8418KeymapEntry {
-    uint16_t code;
-    char text;
-};
-
-constexpr Tca8418KeymapEntry kTca8418Keymap[] = {
-    {183, '!'}, {184, '@'}, {185, '#'}, {186, '$'},  {187, '%'}, {188, '^'}, {189, '&'}, {190, '*'},
-    {191, '('}, {192, ')'}, {193, '~'}, {194, '`'},  {195, '+'}, {196, '-'}, {197, '/'}, {198, '\\'},
-    {199, '{'}, {200, '}'}, {201, '['}, {202, ']'},  {209, '='}, {210, ':'}, {211, ';'}, {212, '_'},
-    {213, '?'}, {214, '<'}, {215, '>'}, {216, '\''}, {217, '"'}, {231, ','}, {232, '.'}, {233, '|'},
-};
-
-uint32_t tca8418Utf8(uint16_t code)
+std::filesystem::path cardputerKeymapPath()
 {
-    for (const auto& entry : kTca8418Keymap) {
-        if (entry.code == code) {
-            return static_cast<uint8_t>(entry.text);
-        }
+    if (const char* configured = std::getenv("CC1101_CHAT_KEYMAP_PATH")) {
+        return configured;
     }
-    return 0;
+    return "/usr/share/keymaps/tca8418_keypad_m5stack_keymap.map";
 }
 
 }  // namespace
 #endif
+
+CC1101ChatKeypad::CC1101ChatKeypad()
+#if !LV_USE_SDL && defined(__linux__)
+    : _cardputer_keymap(cardputerKeymapPath())
+#endif
+{
+#if !LV_USE_SDL && defined(__linux__)
+    spdlog::info("CC1101ChatKeypad: {} Cardputer keymap ({} entries)",
+                 _cardputer_keymap.loadedRuntimeMap() ? "loaded system" : "using built-in", _cardputer_keymap.size());
+#endif
+}
 
 CC1101ChatKeypad::~CC1101ChatKeypad()
 {
@@ -323,8 +321,8 @@ uint32_t CC1101ChatKeypad::translateKey(uint16_t code) const
 {
 #if !LV_USE_SDL && defined(__linux__)
     const bool shifted = shiftPressed();
-    if (const uint32_t tca8418_key = tca8418Utf8(code)) {
-        return tca8418_key;
+    if (const uint32_t mapped_character = _cardputer_keymap.characterFor(code)) {
+        return mapped_character;
     }
 
     switch (code) {

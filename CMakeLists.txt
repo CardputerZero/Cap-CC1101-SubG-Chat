@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(M5CardputerZeroCapCC1101SubGChat VERSION 0.1.7 LANGUAGES C CXX ASM)
+project(M5CardputerZeroCapCC1101SubGChat VERSION 0.1.8 LANGUAGES C CXX ASM)
 
 option(CC1101_CHAT_USE_SDL "Use LVGL's SDL backend and mock radio" ON)
 option(BUILD_TESTING "Build CC1101 Chat tests" OFF)
@@ -226,6 +226,16 @@ set_target_properties(${CC1101_CHAT_BIN_NAME} PROPERTIES
 
 if(BUILD_TESTING)
     enable_testing()
+    add_executable(cc1101_chat_cardputer_keymap_tests
+        tests/cardputer_keymap_test.cpp
+        src/input/cardputer_keymap.cpp
+    )
+    target_include_directories(cc1101_chat_cardputer_keymap_tests PRIVATE "${CC1101_CHAT_SRC_DIR}")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(cc1101_chat_cardputer_keymap_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME cc1101_chat_cardputer_keymap COMMAND cc1101_chat_cardputer_keymap_tests)
+
     add_executable(cc1101_chat_protocol_tests
         tests/chat_protocol_test.cpp
         src/radio/chat_protocol.cpp
@@ -242,11 +252,19 @@ if(BUILD_TESTING)
         src/radio/radio_worker.cpp
     )
     target_include_directories(cc1101_chat_radio_worker_tests PRIVATE "${CC1101_CHAT_SRC_DIR}")
+    target_compile_definitions(cc1101_chat_radio_worker_tests PRIVATE CC1101_CHAT_TEST_FAST_RADIO_TIMING=1)
     target_link_libraries(cc1101_chat_radio_worker_tests PRIVATE spdlog::spdlog Threads::Threads)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(cc1101_chat_radio_worker_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME cc1101_chat_radio_worker COMMAND cc1101_chat_radio_worker_tests)
+
+    add_executable(cc1101_chat_register_tests tests/cc1101_registers_test.cpp)
+    target_include_directories(cc1101_chat_register_tests PRIVATE "${CC1101_CHAT_SRC_DIR}")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(cc1101_chat_register_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME cc1101_chat_registers COMMAND cc1101_chat_register_tests)
 
     add_executable(cc1101_chat_pinctrl_state_tests
         tests/pinctrl_state_test.cpp

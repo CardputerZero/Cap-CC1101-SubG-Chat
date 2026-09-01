@@ -1,4 +1,5 @@
 #include "cc1101.h"
+#include "cc1101_registers.hpp"
 
 #include <spdlog/spdlog.h>
 #include <algorithm>
@@ -93,8 +94,6 @@ constexpr uint8_t PKT_FORMAT_NORMAL                   = 0x00;
 constexpr uint8_t SYNC_MODE_16_16                     = 0x02;
 constexpr uint8_t FS_AUTOCAL_IDLE_TO_RXTX             = 0x10;
 constexpr uint8_t PIN_CTRL_OFF                        = 0x00;
-constexpr uint8_t RXOFF_RX                            = 0x30;
-constexpr uint8_t TXOFF_IDLE                          = 0x00;
 constexpr size_t FIFO_SIZE                            = 64;
 constexpr size_t MAX_PACKET                           = 255;
 constexpr float XOSC_MHZ                              = 26.0f;
@@ -379,8 +378,9 @@ void CC1101Radio::configurePacketMode()
     setRegBits(REG_PKTCTRL0, CRC_ON | LENGTH_VARIABLE, 2, 0);
     writeRegRaw(REG_ADDR, 0x00);
     // Keep RX active after a packet so receive() can drain the FIFO without
-    // introducing an IDLE -> RX gap. TX still returns to IDLE explicitly.
-    setRegBits(REG_MCSM1, RXOFF_RX | TXOFF_IDLE, 5, 2);
+    // introducing an IDLE -> RX gap. RXOFF_MODE occupies bits 3:2; bits 5:4
+    // are the unrelated CCA mode.
+    setRegBits(REG_MCSM1, cc1101_driver::persistentReceiveMcsm1(0), 3, 0);
 }
 
 void CC1101Radio::setFrequency(float freq_mhz)
@@ -483,7 +483,7 @@ void CC1101Radio::applyRadioLib868LowConfig()
     writeRegRaw(REG_MDMCFG0, 0xF8);
     writeRegRaw(REG_DEVIATN, 0x40);
     writeRegRaw(REG_MCSM2, 0x07);
-    writeRegRaw(REG_MCSM1, 0x30);
+    writeRegRaw(REG_MCSM1, cc1101_driver::persistentReceiveMcsm1(0x30));
     writeRegRaw(REG_MCSM0, 0x14);
     writeRegRaw(REG_FOCCFG, 0x76);
     writeRegRaw(REG_BSCFG, 0x6C);
@@ -580,7 +580,12 @@ bool CC1101Radio::waitForRxBytesAtLeast(uint8_t min_bytes, int timeout_ms, const
     auto start = std::chrono::steady_clock::now();
     while (true) {
         throwIfCancelled(cancel);
-        if ((readRegRaw(REG_RXBYTES) & 0x7F) >= min_bytes) return true;
+        const uint8_t rx_bytes = readRegRaw(REG_RXBYTES);
+        if (cc1101_driver::rxFifoOverflowed(rx_bytes)) {
+            spdlog::warn("CC1101 driver: RX FIFO overflow while waiting for {} bytes; resetting RX", min_bytes);
+            return false;
+        }
+        if (cc1101_driver::rxFifoByteCount(rx_bytes) >= min_bytes) return true;
         if (timeout_ms >= 0 &&
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() >
                 timeout_ms) {
@@ -613,7 +618,13 @@ bool CC1101Radio::receive(RxPacket& packet, int timeout_ms, const std::atomic_bo
 
         while (true) {
             throwIfCancelled(cancel);
-            if ((readRegRaw(REG_RXBYTES) & 0x7F) > 0) {
+            const uint8_t rx_bytes = readRegRaw(REG_RXBYTES);
+            if (cc1101_driver::rxFifoOverflowed(rx_bytes)) {
+                spdlog::warn("CC1101 driver: RX FIFO overflow detected; resetting RX");
+                startReceive();
+                continue;
+            }
+            if (cc1101_driver::rxFifoByteCount(rx_bytes) > 0) {
                 ready = true;
                 break;
             }
@@ -648,10 +659,14 @@ bool CC1101Radio::receive(RxPacket& packet, int timeout_ms, const std::atomic_bo
         packet.lqi      = raw_lqi_;
         packet.crc_ok   = (lqi_crc & CRC_OK) != 0;
 
-        // MCSM1 keeps the transceiver in RX after packet reception. Leave it
-        // there while the worker handles the frame so the next packet does
-        // not encounter an avoidable IDLE/flush/RX gap. The ACK path calls
-        // stopReceive() explicitly before switching to TX.
+        // MCSM1 keeps the transceiver in RX after packet reception. Recover
+        // defensively if the chip nevertheless entered IDLE or overflow.
+        const uint8_t state = marcState();
+        if (state != 0x0D) {
+            spdlog::warn("CC1101 driver: packet drained but MARCSTATE=0x{:02X}; resetting RX",
+                         static_cast<unsigned>(state));
+            startReceive();
+        }
         return true;
     }
 }
