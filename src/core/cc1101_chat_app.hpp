@@ -18,7 +18,7 @@ public:
     CC1101ChatApp(const CC1101ChatApp&)            = delete;
     CC1101ChatApp& operator=(const CC1101ChatApp&) = delete;
 
-    void start();
+    bool start();
     void stop();
     void onKey(uint32_t key);
     bool onLvglKeyState(uint32_t lvKey, const char* utf8, bool pressed);
@@ -46,7 +46,7 @@ private:
 
     ViewModel* viewModelFor(PageId page);
     View* viewFor(PageId page);
-    void setupInputGroup();
+    bool setupInputGroup();
     void setCurrentPage(PageId page);
     static void onRouteChanged(void* context, const PageId& page);
     static void onKeyboardEvent(lv_event_t* event);

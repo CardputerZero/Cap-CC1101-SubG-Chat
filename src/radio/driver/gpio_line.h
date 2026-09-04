@@ -30,6 +30,20 @@ public:
 
     void setNumber(int gpio)
     {
+        if (gpio_ == gpio) {
+            return;
+        }
+        releaseLine();
+#ifdef GPIOD_V2
+        request_ = nullptr;
+#else
+        // gpiod_line handles are tied to the old offset. Force a fresh lookup
+        // when the line number changes.
+        line_ = nullptr;
+#endif
+        requested_    = false;
+        direction_    = Direction::In;
+        output_value_ = false;
         gpio_ = gpio;
     }
     int number() const

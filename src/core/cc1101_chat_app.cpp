@@ -84,10 +84,10 @@ CC1101ChatApp::~CC1101ChatApp()
     stop();
 }
 
-void CC1101ChatApp::start()
+bool CC1101ChatApp::start()
 {
     if (_started) {
-        return;
+        return true;
     }
 
     spdlog::info("CC1101ChatApp: start");
@@ -95,10 +95,15 @@ void CC1101ChatApp::start()
     _quit_requested = false;
     lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(lv_screen_active(), LV_OPA_COVER, LV_PART_MAIN);
-    setupInputGroup();
+    if (!setupInputGroup()) {
+        _started = false;
+        spdlog::error("CC1101ChatApp: failed to create LVGL input group");
+        return false;
+    }
     _model.start();
     _route_observer_id = _router.currentPage().observe(this, onRouteChanged);
     setCurrentPage(_router.page());
+    return true;
 }
 
 void CC1101ChatApp::stop()
@@ -252,13 +257,16 @@ View* CC1101ChatApp::viewFor(PageId page)
     return index < _views.size() ? _views[index] : nullptr;
 }
 
-void CC1101ChatApp::setupInputGroup()
+bool CC1101ChatApp::setupInputGroup()
 {
     if (_input_group) {
-        return;
+        return true;
     }
 
     _input_group            = lv_group_create();
+    if (!_input_group) {
+        return false;
+    }
     lv_indev_t* inputDevice = lv_indev_get_next(nullptr);
     while (inputDevice) {
         if (lv_indev_get_type(inputDevice) == LV_INDEV_TYPE_KEYPAD) {
@@ -270,6 +278,7 @@ void CC1101ChatApp::setupInputGroup()
         }
         inputDevice = lv_indev_get_next(inputDevice);
     }
+    return true;
 }
 
 void CC1101ChatApp::setCurrentPage(PageId page)

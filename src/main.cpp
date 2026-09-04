@@ -19,9 +19,6 @@ volatile std::sig_atomic_t g_signal_exit_requested = 0;
 void requestExitFromSignal(int signal)
 {
     g_signal_exit_requested = signal;
-#if !LV_USE_SDL
-    alarm(kShutdownTimeoutSeconds);
-#endif
 }
 
 void forceExitAfterShutdownTimeout(int)
@@ -32,17 +29,23 @@ void forceExitAfterShutdownTimeout(int)
     _exit(2);
 }
 
-void installSignalHandlers()
+bool installSignalHandlers()
 {
     struct sigaction action {};
     action.sa_handler = requestExitFromSignal;
     sigemptyset(&action.sa_mask);
     action.sa_flags = 0;
-    sigaction(SIGINT, &action, nullptr);
-    sigaction(SIGTERM, &action, nullptr);
+    if (sigaction(SIGINT, &action, nullptr) != 0 || sigaction(SIGTERM, &action, nullptr) != 0) {
+        std::perror("Cap-CC1101-SubG-Chat: sigaction");
+        return false;
+    }
 
     action.sa_handler = forceExitAfterShutdownTimeout;
-    sigaction(SIGALRM, &action, nullptr);
+    if (sigaction(SIGALRM, &action, nullptr) != 0) {
+        std::perror("Cap-CC1101-SubG-Chat: sigaction");
+        return false;
+    }
+    return true;
 }
 
 }  // namespace
@@ -54,7 +57,9 @@ int main()
 
     spdlog::set_pattern("%Y-%m-%d %H:%M:%S.%e [%^%l%$] [thread %t] %v");
     spdlog::cfg::load_env_levels();
-    installSignalHandlers();
+    if (!installSignalHandlers()) {
+        return 1;
+    }
 
     lv_init();
     if (!cc1101_chat::initLvglHal(kScreenWidth, kScreenHeight)) {
@@ -87,7 +92,13 @@ int main()
     }
 #endif
 
-    app.start();
+    if (!app.start()) {
+#if !LV_USE_SDL
+        keypad.close();
+#endif
+        cc1101_chat::shutdownLvglHal();
+        return 1;
+    }
     lv_obj_invalidate(lv_screen_active());
 
     while (!app.quitRequested() && !cc1101_chat::lvglHalQuitRequested() && g_signal_exit_requested == 0) {

@@ -185,28 +185,52 @@ void CC1101Radio::csHigh()
 
 uint8_t CC1101Radio::command(uint8_t cmd)
 {
-    csLow();
-    uint8_t status = spi_.transfer(cmd);
-    csHigh();
-    return status;
+    try {
+        csLow();
+        const uint8_t status = spi_.transfer(cmd);
+        csHigh();
+        return status;
+    } catch (...) {
+        try {
+            csHigh();
+        } catch (...) {
+        }
+        throw;
+    }
 }
 
 uint8_t CC1101Radio::readRegRaw(uint8_t reg)
 {
     uint8_t tx[2] = {static_cast<uint8_t>(statusAddress(reg) | CMD_READ), 0x00};
     uint8_t rx[2] = {};
-    csLow();
-    spi_.transfer(tx, rx, sizeof(tx));
-    csHigh();
+    try {
+        csLow();
+        spi_.transfer(tx, rx, sizeof(tx));
+        csHigh();
+    } catch (...) {
+        try {
+            csHigh();
+        } catch (...) {
+        }
+        throw;
+    }
     return rx[1];
 }
 
 void CC1101Radio::writeRegRaw(uint8_t reg, uint8_t value)
 {
     uint8_t tx[2] = {statusAddress(reg), value};
-    csLow();
-    spi_.writeBytes(tx, sizeof(tx));
-    csHigh();
+    try {
+        csLow();
+        spi_.writeBytes(tx, sizeof(tx));
+        csHigh();
+    } catch (...) {
+        try {
+            csHigh();
+        } catch (...) {
+        }
+        throw;
+    }
     if (reg < sizeof(reg_shadow_)) {
         reg_shadow_[reg]       = value;
         reg_shadow_valid_[reg] = true;
@@ -217,9 +241,17 @@ void CC1101Radio::readBurst(uint8_t reg, uint8_t* data, size_t len)
 {
     std::vector<uint8_t> tx(len + 1, 0x00), rx(len + 1, 0x00);
     tx[0] = static_cast<uint8_t>(statusAddress(reg) | CMD_READ | CMD_BURST);
-    csLow();
-    spi_.transfer(tx.data(), rx.data(), tx.size());
-    csHigh();
+    try {
+        csLow();
+        spi_.transfer(tx.data(), rx.data(), tx.size());
+        csHigh();
+    } catch (...) {
+        try {
+            csHigh();
+        } catch (...) {
+        }
+        throw;
+    }
     std::copy(rx.begin() + 1, rx.end(), data);
 }
 
@@ -235,9 +267,17 @@ void CC1101Radio::writeBurst(uint8_t reg, const uint8_t* data, size_t len)
     std::vector<uint8_t> tx(len + 1, 0x00);
     tx[0] = static_cast<uint8_t>(statusAddress(reg) | CMD_BURST);
     std::copy(data, data + len, tx.begin() + 1);
-    csLow();
-    spi_.writeBytes(tx.data(), tx.size());
-    csHigh();
+    try {
+        csLow();
+        spi_.writeBytes(tx.data(), tx.size());
+        csHigh();
+    } catch (...) {
+        try {
+            csHigh();
+        } catch (...) {
+        }
+        throw;
+    }
 }
 
 uint8_t CC1101Radio::readRegister(uint8_t reg)

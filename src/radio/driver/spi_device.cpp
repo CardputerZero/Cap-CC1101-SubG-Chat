@@ -15,7 +15,7 @@ SpiDevice::~SpiDevice()
 void SpiDevice::openDevice(const std::string& path, uint32_t speed_hz, uint8_t mode, uint8_t bits, bool no_kernel_cs)
 {
     closeDevice();
-    fd_ = ::open(path.c_str(), O_RDWR);
+    fd_ = ::open(path.c_str(), O_RDWR | O_CLOEXEC);
     if (fd_ < 0) {
         throw std::runtime_error("open SPI failed: " + path + ": " + strerror(errno));
     }
@@ -24,13 +24,19 @@ void SpiDevice::openDevice(const std::string& path, uint32_t speed_hz, uint8_t m
         mode |= SPI_NO_CS;
     }
     if (ioctl(fd_, SPI_IOC_WR_MODE, &mode) < 0) {
-        throw std::runtime_error("SPI_IOC_WR_MODE failed: " + std::string(strerror(errno)));
+        const std::string message = "SPI_IOC_WR_MODE failed: " + std::string(strerror(errno));
+        closeDevice();
+        throw std::runtime_error(message);
     }
     if (ioctl(fd_, SPI_IOC_WR_BITS_PER_WORD, &bits) < 0) {
-        throw std::runtime_error("SPI_IOC_WR_BITS_PER_WORD failed: " + std::string(strerror(errno)));
+        const std::string message = "SPI_IOC_WR_BITS_PER_WORD failed: " + std::string(strerror(errno));
+        closeDevice();
+        throw std::runtime_error(message);
     }
     if (ioctl(fd_, SPI_IOC_WR_MAX_SPEED_HZ, &speed_hz) < 0) {
-        throw std::runtime_error("SPI_IOC_WR_MAX_SPEED_HZ failed: " + std::string(strerror(errno)));
+        const std::string message = "SPI_IOC_WR_MAX_SPEED_HZ failed: " + std::string(strerror(errno));
+        closeDevice();
+        throw std::runtime_error(message);
     }
     speed_hz_ = speed_hz;
     bits_     = bits;

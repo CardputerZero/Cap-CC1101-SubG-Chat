@@ -231,14 +231,34 @@ void RadioWorker::run()
     } catch (const RadioCancelled&) {
     } catch (const std::exception& exception) {
         if (!_stop_requested.load(std::memory_order_acquire)) {
-            pushEvent(RadioErrorEvent{"worker", exceptionMessage(exception)});
-            pushState(RadioState::Error, "Radio worker stopped unexpectedly");
+            try {
+                pushEvent(RadioErrorEvent{"worker", exceptionMessage(exception)});
+                pushState(RadioState::Error, "Radio worker stopped unexpectedly");
+            } catch (...) {
+            }
+        }
+    } catch (...) {
+        if (!_stop_requested.load(std::memory_order_acquire)) {
+            try {
+                pushEvent(RadioErrorEvent{"worker", "unknown worker error"});
+                pushState(RadioState::Error, "Radio worker stopped unexpectedly");
+            } catch (...) {
+            }
         }
     }
 
-    pushState(RadioState::Stopping, "Stopping radio");
-    _backend->close();
-    pushState(RadioState::Stopped, "Radio stopped");
+    try {
+        pushState(RadioState::Stopping, "Stopping radio");
+    } catch (...) {
+    }
+    try {
+        _backend->close();
+    } catch (...) {
+    }
+    try {
+        pushState(RadioState::Stopped, "Radio stopped");
+    } catch (...) {
+    }
     _running.store(false, std::memory_order_release);
 }
 
