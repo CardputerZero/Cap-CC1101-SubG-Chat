@@ -21,6 +21,8 @@ namespace cc1101_chat::radio {
 namespace {
 
 using Clock = std::chrono::steady_clock;
+constexpr auto kPowerSettle =
+    std::chrono::milliseconds{100};
 
 uint64_t monotonicMilliseconds()
 {
@@ -45,10 +47,12 @@ public:
     RadioInfo open(const CancellationToken& cancellation) override
     {
         close();
+        cancellableSleep(std::chrono::milliseconds(500), cancellation);
         cancellation.throwIfCancellationRequested();
 
         std::string_view stage = "startup";
         try {
+            cancellableSleep(std::chrono::milliseconds(500), cancellation);
             stage = "Cap power enable";
             spdlog::info("CC1101 backend: enabling Cap power (pinctrl G14/G15/G26, GPIO26 and ext_5v_out LED class)");
             std::string power_error;
@@ -58,8 +62,11 @@ public:
             }
 
             stage = "power settle";
-            spdlog::debug("CC1101 backend: waiting 100 ms for Cap power to settle");
-            cancellableSleep(std::chrono::milliseconds(100), cancellation);
+            // spdlog::debug("CC1101 backend: waiting 100 ms for Cap power to settle");
+            // cancellableSleep(std::chrono::milliseconds(100), cancellation);
+            spdlog::debug("CC1101 backend: waiting {} ms for Cap power to settle",
+                        kPowerSettle.count());
+            cancellableSleep(kPowerSettle, cancellation);
 
             stage = "SPI open";
             spdlog::info("CC1101 backend: opening SPI /dev/spidev0.1 (mode=0, speed=500000 Hz, bits=8, kernel CS=yes)");
