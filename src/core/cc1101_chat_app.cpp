@@ -55,6 +55,12 @@ bool handleFocusedTextInput(uint32_t lvKey, const char* utf8)
         case LV_KEY_RIGHT:
             lv_textarea_cursor_right(input);
             return true;
+        case LV_KEY_UP:
+            lv_textarea_cursor_up(input);
+            return true;
+        case LV_KEY_DOWN:
+            lv_textarea_cursor_down(input);
+            return true;
         case LV_KEY_HOME:
             lv_textarea_set_cursor_pos(input, 0);
             return true;

@@ -56,7 +56,7 @@ const char* postResultText(radio::RadioPostResult result)
         case radio::RadioPostResult::QueueFull:
             return "Send queue is full";
         case radio::RadioPostResult::EmptyPayload:
-            return "Message is empty :(";
+            return "Message is empty";
         case radio::RadioPostResult::PayloadTooLarge:
             return "Message is too long";
     }
