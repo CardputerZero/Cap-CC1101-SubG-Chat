@@ -321,7 +321,8 @@ bool ChatModel::sendDraft()
     }
 
     radio::RadioSendCommand command;
-    command.id = _next_tx_id++;
+    const uint64_t transactionId = _next_tx_id++;
+    command.id                  = transactionId;
     command.payload.assign(message.begin(), message.end());
     const radio::RadioPostResult result = _radio_worker->post(radio::RadioCommand{std::move(command)});
     if (result != radio::RadioPostResult::Accepted) {
@@ -334,7 +335,7 @@ bool ChatModel::sendDraft()
     outgoing.outgoing    = true;
     outgoing.sendPending = true;
     const uint64_t messageId = appendMessage(std::move(outgoing));
-    _pending_messages.emplace(_next_tx_id - 1, messageId);
+    _pending_messages.emplace(transactionId, messageId);
     _draft.set("");
     setComposeStatus("");
     return true;
