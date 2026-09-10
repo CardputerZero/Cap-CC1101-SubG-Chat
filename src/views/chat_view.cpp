@@ -44,6 +44,17 @@ constexpr int32_t kInitializationDialogHeight  = 124;
 constexpr int32_t kInitializationDialogHiddenY = -150;
 constexpr uint32_t kDeepBlue                   = 0x123B5D;
 constexpr int32_t kComposeTextLetterSpacing    = 2;
+constexpr int32_t kInfoDividerInset             = 12;
+constexpr int32_t kInfoTopDividerY              = 42;
+constexpr int32_t kInfoFieldCaptionY            = 48;
+constexpr int32_t kInfoFieldValueY              = 61;
+constexpr int32_t kInfoBottomDividerY           = 84;
+constexpr int32_t kInfoLinkCaptionWidth         = 36;
+constexpr int32_t kInfoLinkRowY                 = 92;
+constexpr int32_t kInfoRadioProfileY            = 110;
+constexpr int32_t kInfoHardwareProfileY         = 125;
+constexpr int32_t kInfoStatsY                   = 141;
+constexpr char kInfoValueRecolorTag[]            = "#DDE0E4 ";
 constexpr char kPrintableAscii[] =
     " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
 
@@ -605,9 +616,9 @@ private:
 class InfoField {
 public:
     InfoField(lv_obj_t* parent, std::string_view caption, int32_t x, int32_t width)
-        : _caption(std::make_unique<TextLabel>(parent, caption, Frame{x, 54, width, 11}, &lv_font_montserrat_10,
+        : _caption(std::make_unique<TextLabel>(parent, caption, Frame{x, kInfoFieldCaptionY, width, 11}, &lv_font_montserrat_10,
                                                0x777B82, LV_TEXT_ALIGN_LEFT)),
-          _value(std::make_unique<TextLabel>(parent, "", Frame{x, 67, width, 17}, &lv_font_montserrat_12, 0xDDE0E4,
+          _value(std::make_unique<TextLabel>(parent, "", Frame{x, kInfoFieldValueY, width, 17}, &lv_font_montserrat_12, 0xDDE0E4,
                                              LV_TEXT_ALIGN_LEFT))
     {
         _value->setLongMode(LV_LABEL_LONG_MODE_DOTS);
@@ -632,24 +643,41 @@ public:
           _status_dot(
               std::make_unique<Panel>(_panel->raw_ptr(), Frame{0, 0, 6, 6}, 0xC9A45C, LV_OPA_COVER, LV_RADIUS_CIRCLE)),
           _status_label(std::make_unique<TextLabel>(_panel->raw_ptr(), "", Frame{20, 22, 180, 16},
-                                                    &lv_font_montserrat_10, 0xAEB2B8, LV_TEXT_ALIGN_LEFT)),
+                                                    &lv_font_montserrat_10, 0xDDE0E4, LV_TEXT_ALIGN_LEFT)),
           _chip_label(std::make_unique<TextLabel>(_panel->raw_ptr(), "CC1101", Frame{220, 22, 92, 16},
-                                                  &lv_font_montserrat_10, 0x777B82, LV_TEXT_ALIGN_RIGHT)),
-          _top_divider(std::make_unique<Panel>(_panel->raw_ptr(), Frame{8, 45, 304, 1}, 0x25272B, LV_OPA_COVER)),
+                                                  &lv_font_montserrat_10, 0xDDE0E4, LV_TEXT_ALIGN_RIGHT)),
+          _top_divider(std::make_unique<Panel>(
+              _panel->raw_ptr(),
+              Frame{kInfoDividerInset, kInfoTopDividerY, kScreenWidth - kInfoDividerInset * 2, 1}, 0x25272B,
+              LV_OPA_COVER)),
           _device(std::make_unique<InfoField>(_panel->raw_ptr(), "DEVICE", 8, 148)),
           _rssi(std::make_unique<InfoField>(_panel->raw_ptr(), "RSSI", 166, 66)),
           _lqi(std::make_unique<InfoField>(_panel->raw_ptr(), "LQI", 240, 72)),
-          _bottom_divider(std::make_unique<Panel>(_panel->raw_ptr(), Frame{8, 89, 304, 1}, 0x25272B, LV_OPA_COVER)),
-          _link_caption(std::make_unique<TextLabel>(_panel->raw_ptr(), "LINK", Frame{8, 98, 304, 11},
+          _bottom_divider(std::make_unique<Panel>(
+              _panel->raw_ptr(),
+              Frame{kInfoDividerInset, kInfoBottomDividerY, kScreenWidth - kInfoDividerInset * 2, 1}, 0x25272B,
+              LV_OPA_COVER)),
+          _link_caption(std::make_unique<TextLabel>(_panel->raw_ptr(), "LINK",
+                                                    Frame{8, kInfoLinkRowY + 2, kInfoLinkCaptionWidth, 11},
                                                     &lv_font_montserrat_10, 0x777B82, LV_TEXT_ALIGN_LEFT)),
-          _link_value(std::make_unique<TextLabel>(_panel->raw_ptr(), "", Frame{8, 111, 304, 16}, &lv_font_montserrat_12,
-                                                  0xDDE0E4, LV_TEXT_ALIGN_LEFT)),
-          _stats_value(std::make_unique<TextLabel>(_panel->raw_ptr(), "", Frame{8, 134, 304, 13},
+          _link_value(std::make_unique<TextLabel>(
+              _panel->raw_ptr(), "",
+              Frame{8 + kInfoLinkCaptionWidth, kInfoLinkRowY, kScreenWidth - 16 - kInfoLinkCaptionWidth, 16},
+              &lv_font_montserrat_12, 0xDDE0E4, LV_TEXT_ALIGN_LEFT)),
+          _radio_profile(std::make_unique<TextLabel>(_panel->raw_ptr(), "", Frame{8, kInfoRadioProfileY, 304, 13},
+                                                     &lv_font_montserrat_10, 0x777B82, LV_TEXT_ALIGN_LEFT)),
+          _hardware_profile(std::make_unique<TextLabel>(_panel->raw_ptr(), "", Frame{8, kInfoHardwareProfileY, 304, 13},
+                                                        &lv_font_montserrat_10, 0x777B82, LV_TEXT_ALIGN_LEFT)),
+          _stats_value(std::make_unique<TextLabel>(_panel->raw_ptr(), "", Frame{8, kInfoStatsY, 304, 13},
                                                    &lv_font_montserrat_10, 0x777B82, LV_TEXT_ALIGN_LEFT))
     {
         _status_dot->alignTo(*_status_label, LV_ALIGN_OUT_LEFT_MID, -6, 0);
         _link_value->setLongMode(LV_LABEL_LONG_MODE_DOTS);
+        _radio_profile->setLongMode(LV_LABEL_LONG_MODE_DOTS);
+        _hardware_profile->setLongMode(LV_LABEL_LONG_MODE_DOTS);
         _stats_value->setLongMode(LV_LABEL_LONG_MODE_DOTS);
+        lv_label_set_recolor(_radio_profile->raw_ptr(), true);
+        lv_label_set_recolor(_hardware_profile->raw_ptr(), true);
     }
 
     void setInfo(const ChatRadioInfo& info)
@@ -692,24 +720,43 @@ public:
         std::snprintf(value, sizeof(value), "%u", static_cast<unsigned>(info.lqi));
         _lqi->setValue(value);
 
-        if (info.link.empty()) {
-            std::snprintf(value, sizeof(value), "%.2f MHz", info.frequencyMhz);
-            _link_value->setText(value);
+        std::snprintf(value, sizeof(value), "%.3f MHz", info.frequencyMhz);
+        _link_value->setText(value);
+
+        if (info.bitRateKbps > 0.0F) {
+            std::snprintf(value, sizeof(value), "RATE %s%.1fk#   BW %s%.0fk#   DEV %s%.1fk#   PWR %s%d dBm#",
+                          kInfoValueRecolorTag, info.bitRateKbps, kInfoValueRecolorTag, info.rxBandwidthKhz,
+                          kInfoValueRecolorTag, info.deviationKhz, kInfoValueRecolorTag,
+                          static_cast<int>(info.outputPowerDbm));
+            _radio_profile->setText(value);
         } else {
-            _link_value->setText(info.link);
+            std::snprintf(value, sizeof(value), "RATE %s--#   BW %s--#   DEV %s--#   PWR %s--#",
+                          kInfoValueRecolorTag, kInfoValueRecolorTag, kInfoValueRecolorTag, kInfoValueRecolorTag);
+            _radio_profile->setText(value);
+        }
+
+        if (info.spiSpeedHz > 0 && info.syncWord > 0) {
+            std::snprintf(value, sizeof(value), "MAX %s%zuB#   SYNC %s%04X#   SPI %s%uk#", kInfoValueRecolorTag,
+                          kMaxMessageBytes, kInfoValueRecolorTag, static_cast<unsigned>(info.syncWord),
+                          kInfoValueRecolorTag, static_cast<unsigned>(info.spiSpeedHz / 1000U));
+            _hardware_profile->setText(value);
+        } else {
+            std::snprintf(value, sizeof(value), "MAX %s%zuB#   SYNC %s----#   SPI %s--#", kInfoValueRecolorTag,
+                          kMaxMessageBytes, kInfoValueRecolorTag, kInfoValueRecolorTag);
+            _hardware_profile->setText(value);
         }
 
         const bool sendFailed = info.diagnostics.rfind("Send failed:", 0) == 0;
         if ((info.state == RadioUiState::Error || sendFailed) && !info.diagnostics.empty()) {
             _stats_value->setText(info.diagnostics);
+            _stats_value->setTextColor(lv_color_hex(0xD96C6C));
         } else {
             std::snprintf(value, sizeof(value), "CRC %s   RX:%llu  TX:%llu  DROP:%llu", info.lastCrcOk ? "OK" : "FAIL",
                           static_cast<unsigned long long>(info.rxCount), static_cast<unsigned long long>(info.txCount),
                           static_cast<unsigned long long>(info.droppedCount));
             _stats_value->setText(value);
+            _stats_value->setTextColor(lv_color_hex(info.lastCrcOk ? 0x69AD80 : 0xD96C6C));
         }
-        _stats_value->setTextColor(
-            lv_color_hex(info.state == RadioUiState::Error || !info.lastCrcOk || sendFailed ? 0xD96C6C : 0x777B82));
     }
 
     void setOpacity(lv_opa_t opacity)
@@ -735,6 +782,8 @@ private:
     std::unique_ptr<Panel> _bottom_divider;
     std::unique_ptr<TextLabel> _link_caption;
     std::unique_ptr<TextLabel> _link_value;
+    std::unique_ptr<TextLabel> _radio_profile;
+    std::unique_ptr<TextLabel> _hardware_profile;
     std::unique_ptr<TextLabel> _stats_value;
 };
 

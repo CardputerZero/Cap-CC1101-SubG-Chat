@@ -15,6 +15,8 @@ namespace cc1101_chat {
 namespace {
 
 constexpr std::size_t kMaxEventsPerTick = 16;
+constexpr uint32_t kCc1101SpiSpeedHz    = 500000;
+constexpr uint16_t kCc1101SyncWord      = 0x12AD;
 
 std::string printablePayload(const std::vector<uint8_t>& payload)
 {
@@ -191,6 +193,12 @@ void ChatModel::tick(uint32_t nowMs)
                     info.spiDevice            = value.info.backend_name;
                     info.chipVersion          = versionText(value.info.chip_version);
                     info.frequencyMhz         = value.info.frequency_mhz;
+                    info.bitRateKbps          = value.info.bit_rate_kbps;
+                    info.rxBandwidthKhz       = value.info.rx_bandwidth_khz;
+                    info.deviationKhz         = value.info.deviation_khz;
+                    info.outputPowerDbm       = value.info.output_power_dbm;
+                    info.spiSpeedHz           = kCc1101SpiSpeedHz;
+                    info.syncWord             = kCc1101SyncWord;
                     info.link                 = linkText(value.info);
                     info.diagnostics          = value.info.mock ? "SDL mock radio ready" : "CC1101 ready";
                     _radio_info.set(std::move(info));
