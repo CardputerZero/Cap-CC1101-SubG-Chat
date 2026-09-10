@@ -51,8 +51,14 @@ struct ChatRadioInfo {
     std::string spiDevice{"/dev/spidev0.1"};
     std::string chipVersion{"--"};
     float frequencyMhz    = 868.0F;
+    float bitRateKbps     = 0.0F;
+    float rxBandwidthKhz  = 0.0F;
+    float deviationKhz    = 0.0F;
     float rssiDbm         = 0.0F;
+    uint32_t spiSpeedHz   = 0;
+    uint16_t syncWord     = 0;
     uint8_t lqi           = 0;
+    int8_t outputPowerDbm = 0;
     bool lastCrcOk        = true;
     uint64_t rxCount      = 0;
     uint64_t txCount      = 0;
