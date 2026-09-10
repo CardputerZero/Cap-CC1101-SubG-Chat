@@ -60,10 +60,11 @@ private:
     smooth_ui_toolkit::SingleObservable<std::string> _compose_status{""};
     uint64_t _next_message_id = 1;
     uint64_t _next_tx_id      = 1;
-    std::unordered_map<uint64_t, std::string> _pending_messages;
+    std::unordered_map<uint64_t, uint64_t> _pending_messages;
     bool _started = false;
 
-    void appendMessage(ChatMessage message);
+    uint64_t appendMessage(ChatMessage message);
+    void updateMessageStatus(uint64_t messageId, bool sendPending, bool sendFailed);
     void setComposeStatus(std::string status);
 };
 

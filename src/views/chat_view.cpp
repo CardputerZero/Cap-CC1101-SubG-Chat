@@ -42,6 +42,7 @@ constexpr int32_t kComposeOpenHeight           = 120;
 constexpr int32_t kInitializationDialogWidth   = 286;
 constexpr int32_t kInitializationDialogHeight  = 124;
 constexpr int32_t kInitializationDialogHiddenY = -150;
+constexpr uint32_t kSendingMetadataColor      = 0x123B5D;
 constexpr char kPrintableAscii[] =
     " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
 
@@ -137,6 +138,8 @@ std::string messageMetadata(const ChatMessage& message)
     if (!message.outgoing) {
         std::snprintf(metadata, sizeof(metadata), "%.0f dBm  /  LQI %u%s", message.rssiDbm,
                       static_cast<unsigned>(message.lqi), message.crcOk ? "" : "  /  CRC!");
+    } else if (message.sendPending) {
+        std::snprintf(metadata, sizeof(metadata), "Sending");
     } else if (message.sendFailed) {
         std::snprintf(metadata, sizeof(metadata), "Send failed");
     }
@@ -167,6 +170,8 @@ public:
     MessageBubble(lv_obj_t* parent, const ChatMessage& message)
         : _id(message.id),
           _outgoing(message.outgoing),
+          _send_pending(message.sendPending),
+          _send_failed(message.sendFailed),
           _row(std::make_unique<Panel>(parent, Frame{0, 0, LV_PCT(100), LV_SIZE_CONTENT}, 0x000000, LV_OPA_TRANSP))
     {
         const std::string displayText = message.text.empty() ? "<empty>" : message.text;
@@ -195,7 +200,8 @@ public:
         if (!metadata.empty()) {
             _metadata = std::make_unique<TextLabel>(
                 _bubble->raw_ptr(), metadata, Frame{0, 0, bubbleWidth - 20, LV_SIZE_CONTENT}, &lv_font_montserrat_10,
-                message.sendFailed ? 0x9B2C2C : 0x7E7E7E, LV_TEXT_ALIGN_RIGHT);
+                message.sendPending ? kSendingMetadataColor : (message.sendFailed ? 0x9B2C2C : 0x7E7E7E),
+                LV_TEXT_ALIGN_RIGHT);
         }
     }
 
@@ -209,9 +215,16 @@ public:
         return _row->raw_ptr();
     }
 
+    bool matches(const ChatMessage& message) const
+    {
+        return _id == message.id && _send_pending == message.sendPending && _send_failed == message.sendFailed;
+    }
+
 private:
     uint64_t _id;
     bool _outgoing;
+    bool _send_pending;
+    bool _send_failed;
     std::unique_ptr<Panel> _row;
     std::unique_ptr<Panel> _bubble;
     std::unique_ptr<TextLabel> _text;
@@ -372,6 +385,12 @@ public:
                 }
             }
             if (unchanged) {
+                for (size_t index = 0; index < targetSize; ++index) {
+                    if (!_rows[index]->matches(messageAt(index))) {
+                        rebuild(messages, first);
+                        return;
+                    }
+                }
                 return;
             }
         }

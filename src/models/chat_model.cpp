@@ -224,10 +224,7 @@ void ChatModel::tick(uint32_t nowMs)
                 } else if constexpr (std::is_same_v<Event, radio::RadioTxCompletedEvent>) {
                     const auto pending = _pending_messages.find(value.id);
                     if (pending != _pending_messages.end()) {
-                        ChatMessage message;
-                        message.text     = std::move(pending->second);
-                        message.outgoing = true;
-                        appendMessage(std::move(message));
+                        updateMessageStatus(pending->second, false, false);
                         _pending_messages.erase(pending);
                     }
                     auto info = _radio_info.get();
@@ -237,11 +234,7 @@ void ChatModel::tick(uint32_t nowMs)
                 } else if constexpr (std::is_same_v<Event, radio::RadioTxFailedEvent>) {
                     const auto pending = _pending_messages.find(value.id);
                     if (pending != _pending_messages.end()) {
-                        ChatMessage message;
-                        message.text       = std::move(pending->second);
-                        message.outgoing   = true;
-                        message.sendFailed = true;
-                        appendMessage(std::move(message));
+                        updateMessageStatus(pending->second, false, true);
                         _pending_messages.erase(pending);
                     }
                     auto info        = _radio_info.get();
@@ -315,7 +308,7 @@ bool ChatModel::sendDraft()
 {
     const std::string message = _draft.get();
     if (message.empty()) {
-        setComposeStatus("Message is empty :(");
+        setComposeStatus("Message is empty");
         return false;
     }
     if (message.size() > kMaxMessageBytes) {
@@ -336,7 +329,12 @@ bool ChatModel::sendDraft()
         return false;
     }
 
-    _pending_messages.emplace(_next_tx_id - 1, message);
+    ChatMessage outgoing;
+    outgoing.text        = message;
+    outgoing.outgoing    = true;
+    outgoing.sendPending = true;
+    const uint64_t messageId = appendMessage(std::move(outgoing));
+    _pending_messages.emplace(_next_tx_id - 1, messageId);
     _draft.set("");
     setComposeStatus("");
     return true;
@@ -380,14 +378,31 @@ bool ChatModel::retryRadio()
     return false;
 }
 
-void ChatModel::appendMessage(ChatMessage message)
+uint64_t ChatModel::appendMessage(ChatMessage message)
 {
     message.id                       = _next_message_id++;
+    const uint64_t messageId         = message.id;
     std::vector<ChatMessage> history = _messages.get();
     if (history.size() >= kMessageHistoryLimit) {
         history.erase(history.begin());
     }
     history.push_back(std::move(message));
+    _messages.set(std::move(history));
+    return messageId;
+}
+
+void ChatModel::updateMessageStatus(uint64_t messageId, bool sendPending, bool sendFailed)
+{
+    std::vector<ChatMessage> history = _messages.get();
+    const auto message = std::find_if(history.begin(), history.end(), [messageId](const ChatMessage& item) {
+        return item.id == messageId;
+    });
+    if (message == history.end()) {
+        return;
+    }
+
+    message->sendPending = sendPending;
+    message->sendFailed  = sendFailed;
     _messages.set(std::move(history));
 }
 

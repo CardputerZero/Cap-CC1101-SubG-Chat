@@ -40,7 +40,8 @@ struct ChatMessage {
     float rssiDbm   = 0.0F;
     uint8_t lqi     = 0;
     bool crcOk      = true;
-    bool sendFailed = false;
+    bool sendPending = false;
+    bool sendFailed  = false;
 };
 
 struct ChatRadioInfo {
