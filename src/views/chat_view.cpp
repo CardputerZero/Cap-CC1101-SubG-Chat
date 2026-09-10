@@ -42,7 +42,8 @@ constexpr int32_t kComposeOpenHeight           = 120;
 constexpr int32_t kInitializationDialogWidth   = 286;
 constexpr int32_t kInitializationDialogHeight  = 124;
 constexpr int32_t kInitializationDialogHiddenY = -150;
-constexpr uint32_t kSendingMetadataColor      = 0x123B5D;
+constexpr uint32_t kDeepBlue                   = 0x123B5D;
+constexpr int32_t kComposeTextLetterSpacing    = 2;
 constexpr char kPrintableAscii[] =
     " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
 
@@ -200,7 +201,7 @@ public:
         if (!metadata.empty()) {
             _metadata = std::make_unique<TextLabel>(
                 _bubble->raw_ptr(), metadata, Frame{0, 0, bubbleWidth - 20, LV_SIZE_CONTENT}, &lv_font_montserrat_10,
-                message.sendPending ? kSendingMetadataColor : (message.sendFailed ? 0x9B2C2C : 0x7E7E7E),
+                message.sendPending ? kDeepBlue : (message.sendFailed ? 0x9B2C2C : 0x7E7E7E),
                 LV_TEXT_ALIGN_RIGHT);
         }
     }
@@ -1027,10 +1028,13 @@ private:
         _input->setScrollbarMode(LV_SCROLLBAR_MODE_OFF);
         _input->setTextFont(&lv_font_montserrat_14);
         _input->setTextColor(lv_color_hex(0xFFFFFF));
+        lv_obj_set_style_text_letter_space(_input->raw_ptr(), kComposeTextLetterSpacing, LV_PART_MAIN);
         _input->setOneLine(false);
         _input->setAcceptedChars(kPrintableAscii);
         _input->setMaxLength(kMaxMessageBytes);
         _input->setOutlineWidth(0, LV_STATE_FOCUSED | LV_STATE_FOCUS_KEY);
+        constexpr lv_style_selector_t cursorStyle = LV_PART_CURSOR | LV_STATE_FOCUSED;
+        _input->setBorderColor(lv_color_hex(kDeepBlue), cursorStyle);
         _input->addEventCb(onInputValueChanged, LV_EVENT_VALUE_CHANGED, this);
     }
 
