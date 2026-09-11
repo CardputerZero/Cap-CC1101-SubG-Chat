@@ -25,6 +25,12 @@ enum class ChatSection {
     Info,
 };
 
+enum class EditorMode {
+    None,
+    Message,
+    Nickname,
+};
+
 enum class RadioUiState {
     Initializing,
     Receiving,
@@ -48,6 +54,7 @@ struct ChatRadioInfo {
     RadioUiState state        = RadioUiState::Initializing;
     bool ready                = false;
     bool initializationFailed = false;
+    std::string deviceName{"CC1101"};
     std::string spiDevice{"/dev/spidev0.1"};
     std::string chipVersion{"--"};
     float frequencyMhz    = 868.0F;
@@ -75,6 +82,7 @@ struct ChatScrollRequest {
 
 constexpr std::size_t kMessageHistoryLimit = 64;
 constexpr std::size_t kMaxMessageBytes     = 56;
+constexpr std::size_t kMaxDeviceNameBytes  = 10;
 constexpr int32_t kMessageScrollStep       = 36;
 
 const char* pageIdName(PageId page);

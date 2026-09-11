@@ -33,7 +33,7 @@ private:
     static void onScrollRequestChanged(void* context, const ChatScrollRequest& request);
     static void onDraftChanged(void* context, const std::string& draft);
     static void onComposeStatusChanged(void* context, const std::string& status);
-    static void onComposeActiveChanged(void* context, const bool& active);
+    static void onEditorModeChanged(void* context, const EditorMode& mode);
     static void onInitializationDialogActiveChanged(void* context, const bool& active);
 };
 
