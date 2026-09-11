@@ -8,6 +8,7 @@
 #include <deque>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -26,6 +27,7 @@ void require(bool condition, const char* message)
 
 struct BackendState {
     std::atomic_int data_attempts{0};
+    std::string sender_name;
 };
 
 struct ReceiverState {
@@ -92,6 +94,7 @@ public:
         if (frame.kind != protocol::FrameKind::Data) {
             return;
         }
+        _state->sender_name = frame.sender_name;
         if (++_state->data_attempts == 2) {
             _pending.push_back(protocol::encodeAcknowledgement(frame.token));
         }
@@ -260,8 +263,9 @@ int main()
     require(worker.start(true), "worker did not start");
 
     RadioSendCommand send;
-    send.id      = 42;
-    send.payload = {'r', 'e', 't', 'r', 'y'};
+    send.id          = 42;
+    send.sender_name = "Alice";
+    send.payload     = {'r', 'e', 't', 'r', 'y'};
     require(worker.post(RadioCommand{std::move(send)}) == RadioPostResult::Accepted, "send was rejected");
 
     bool completed      = false;
@@ -279,32 +283,37 @@ int main()
     worker.stop();
     require(completed, "message did not complete after retry");
     require(state->data_attempts.load() == 2, "worker did not retry exactly once");
+    require(state->sender_name == "Alice", "worker did not encode the sender name");
 
     auto receiver_state      = std::make_shared<ReceiverState>();
-    const auto receiver_data = protocol::encodeData(0x102030, {'i', 'n', 'b', 'o', 'x'});
+    const auto receiver_data = protocol::encodeData(0x102030, {'i', 'n', 'b', 'o', 'x'}, "Bob");
     RadioWorker receiver(std::make_unique<ReceiverBackend>(receiver_state, receiver_data));
     require(receiver.start(true), "receiver worker did not start");
 
     std::size_t received_messages = 0;
+    std::string received_sender;
     RadioEvent event;
     const auto receiver_deadline = Clock::now() + std::chrono::seconds(2);
     while (Clock::now() < receiver_deadline && receiver_state->acknowledgement_count.load() < 2) {
         while (receiver.tryPopEvent(event)) {
-            if (std::holds_alternative<RadioRxPacketEvent>(event)) {
+            if (const auto* received = std::get_if<RadioRxPacketEvent>(&event)) {
                 ++received_messages;
+                received_sender = received->sender_name;
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     receiver.stop();
     while (receiver.tryPopEvent(event)) {
-        if (std::holds_alternative<RadioRxPacketEvent>(event)) {
+        if (const auto* received = std::get_if<RadioRxPacketEvent>(&event)) {
             ++received_messages;
+            received_sender = received->sender_name;
         }
     }
     require(receiver_state->acknowledgement_count.load() == 2,
             "receiver did not ACK the original and duplicate packet");
     require(received_messages == 1, "duplicate retransmission was shown as a second message");
+    require(received_sender == "Bob", "receiver event did not carry the sender name");
 
     auto failure_state = std::make_shared<FailureRecoveryState>();
     RadioWorker failure_worker(std::make_unique<FailureRecoveryBackend>(failure_state));

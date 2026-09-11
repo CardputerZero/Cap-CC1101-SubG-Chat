@@ -88,6 +88,7 @@ struct RadioSetReceiveCommand {
 struct RadioSendCommand {
     uint64_t id = 0;
     std::vector<uint8_t> payload;
+    std::string sender_name;
 };
 
 struct RadioShutdownCommand {};
@@ -110,6 +111,7 @@ struct RadioErrorEvent {
 
 struct RadioRxPacketEvent {
     RadioPacket packet;
+    std::string sender_name;
 };
 
 struct RadioTxStartedEvent {

@@ -43,6 +43,8 @@ constexpr int32_t kInitializationDialogWidth   = 286;
 constexpr int32_t kInitializationDialogHeight  = 124;
 constexpr int32_t kInitializationDialogHiddenY = -150;
 constexpr uint32_t kDeepBlue                   = 0x123B5D;
+constexpr uint32_t kDeepRed                    = 0x9B2C2C;
+constexpr char kSenderNameRecolorTag[]         = "#6B4423 ";
 constexpr int32_t kComposeTextLetterSpacing    = 2;
 constexpr int32_t kInfoDividerInset             = 12;
 constexpr int32_t kInfoTopDividerY              = 42;
@@ -162,6 +164,9 @@ std::string messageMetadata(const ChatMessage& message)
 {
     char metadata[64] = {};
     if (!message.outgoing) {
+        if (!message.senderName.empty()) {
+            return "From " + message.senderName;
+        }
         std::snprintf(metadata, sizeof(metadata), "%.0f dBm  /  LQI %u%s", message.rssiDbm,
                       static_cast<unsigned>(message.lqi), message.crcOk ? "" : "  /  CRC!");
     } else if (message.sendPending) {
@@ -201,8 +206,11 @@ public:
           _row(std::make_unique<Panel>(parent, Frame{0, 0, LV_PCT(100), LV_SIZE_CONTENT}, 0x000000, LV_OPA_TRANSP))
     {
         const std::string displayText = message.text.empty() ? "<empty>" : message.text;
-        const std::string metadata    = messageMetadata(message);
-        const int32_t bubbleWidth     = bubbleWidthFor(displayText, metadata);
+        const std::string metadataText = messageMetadata(message);
+        const std::string metadata = !message.outgoing && !message.senderName.empty()
+                                         ? std::string{"From "} + kSenderNameRecolorTag + message.senderName + '#'
+                                         : metadataText;
+        const int32_t bubbleWidth = bubbleWidthFor(displayText, metadataText);
 
         _row->setFlexFlow(LV_FLEX_FLOW_ROW);
         _row->setFlexAlign(_outgoing ? LV_FLEX_ALIGN_END : LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START,
@@ -224,10 +232,12 @@ public:
             std::make_unique<TextLabel>(_bubble->raw_ptr(), displayText, Frame{0, 0, bubbleWidth - 20, LV_SIZE_CONTENT},
                                         &lv_font_montserrat_12, 0x000000, LV_TEXT_ALIGN_LEFT);
         if (!metadata.empty()) {
+            const uint32_t metadataColor =
+                message.sendPending ? kDeepBlue : (message.sendFailed ? kDeepRed : 0x7E7E7E);
             _metadata = std::make_unique<TextLabel>(
                 _bubble->raw_ptr(), metadata, Frame{0, 0, bubbleWidth - 20, LV_SIZE_CONTENT}, &lv_font_montserrat_10,
-                message.sendPending ? kDeepBlue : (message.sendFailed ? 0x9B2C2C : 0x7E7E7E),
-                LV_TEXT_ALIGN_RIGHT);
+                metadataColor, LV_TEXT_ALIGN_RIGHT);
+            lv_label_set_recolor(_metadata->raw_ptr(), !message.outgoing && !message.senderName.empty());
         }
     }
 

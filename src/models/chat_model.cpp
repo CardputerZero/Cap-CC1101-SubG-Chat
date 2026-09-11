@@ -236,11 +236,12 @@ void ChatModel::tick(uint32_t nowMs)
                     _radio_info.set(std::move(info));
 
                     ChatMessage message;
-                    message.text     = printablePayload(value.packet.data);
-                    message.outgoing = false;
-                    message.rssiDbm  = value.packet.rssi_dbm;
-                    message.lqi      = value.packet.lqi;
-                    message.crcOk    = value.packet.crc_ok;
+                    message.text       = printablePayload(value.packet.data);
+                    message.senderName = std::move(value.sender_name);
+                    message.outgoing   = false;
+                    message.rssiDbm    = value.packet.rssi_dbm;
+                    message.lqi        = value.packet.lqi;
+                    message.crcOk      = value.packet.crc_ok;
                     appendMessage(std::move(message));
                 } else if constexpr (std::is_same_v<Event, radio::RadioTxStartedEvent>) {
                     auto info        = _radio_info.get();
@@ -313,7 +314,7 @@ void ChatModel::appendDraft(char character)
     }
     std::string value = _draft.get();
     if (value.size() >= kMaxMessageBytes) {
-        setComposeStatus("56 byte limit");
+        setComposeStatus(std::to_string(kMaxMessageBytes) + " byte limit");
         return;
     }
     value.push_back(character);
@@ -355,7 +356,8 @@ bool ChatModel::sendDraft()
 
     radio::RadioSendCommand command;
     const uint64_t transactionId = _next_tx_id++;
-    command.id                  = transactionId;
+    command.id          = transactionId;
+    command.sender_name = _radio_info.get().deviceName;
     command.payload.assign(message.begin(), message.end());
     const radio::RadioPostResult result = _radio_worker->post(radio::RadioCommand{std::move(command)});
     if (result != radio::RadioPostResult::Accepted) {

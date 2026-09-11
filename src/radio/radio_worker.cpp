@@ -346,7 +346,7 @@ void RadioWorker::handleSend(RadioSendCommand command, bool& initialized, bool r
     pushState(RadioState::Sending, "Sending");
     try {
         const uint32_t token             = nextProtocolToken();
-        const std::vector<uint8_t> frame = protocol::encodeData(token, command.payload);
+        const std::vector<uint8_t> frame = protocol::encodeData(token, command.payload, command.sender_name);
         bool acknowledged                = false;
 
         for (std::size_t attempt = 1; attempt <= kMaximumSendAttempts; ++attempt) {
@@ -440,7 +440,7 @@ bool RadioWorker::processReceivedPacket(RadioPacket packet, uint32_t expected_ac
     protocol::DecodedFrame frame = protocol::decode(packet.data);
     switch (frame.kind) {
         case protocol::FrameKind::Legacy:
-            pushEvent(RadioRxPacketEvent{std::move(packet)});
+            pushEvent(RadioRxPacketEvent{std::move(packet), {}});
             return false;
         case protocol::FrameKind::Malformed:
             spdlog::warn("CC1101 radio: discarded malformed chat frame (bytes={})", packet.data.size());
@@ -459,7 +459,7 @@ bool RadioWorker::processReceivedPacket(RadioPacket packet, uint32_t expected_ac
     if (!duplicate) {
         rememberReceived(frame.token);
         packet.data = std::move(frame.payload);
-        pushEvent(RadioRxPacketEvent{std::move(packet)});
+        pushEvent(RadioRxPacketEvent{std::move(packet), std::move(frame.sender_name)});
     }
 
     if (receive_requested) {

@@ -42,6 +42,7 @@ enum class RadioUiState {
 struct ChatMessage {
     uint64_t id = 0;
     std::string text;
+    std::string senderName;
     bool outgoing   = false;
     float rssiDbm   = 0.0F;
     uint8_t lqi     = 0;
@@ -81,7 +82,8 @@ struct ChatScrollRequest {
 };
 
 constexpr std::size_t kMessageHistoryLimit = 64;
-constexpr std::size_t kMaxMessageBytes     = 56;
+// Reserves one length byte and the maximum nickname inside the 56-byte data area.
+constexpr std::size_t kMaxMessageBytes     = 45;
 constexpr std::size_t kMaxDeviceNameBytes  = 10;
 constexpr int32_t kMessageScrollStep       = 36;
 

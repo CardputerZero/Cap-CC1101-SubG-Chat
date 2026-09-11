@@ -2,12 +2,15 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace cc1101_chat::radio::protocol {
 
-inline constexpr std::size_t kHeaderSize     = 5;
-inline constexpr std::size_t kMaxMessageSize = 56;
+inline constexpr std::size_t kHeaderSize        = 5;
+inline constexpr std::size_t kMaxMessageSize    = 56;
+inline constexpr std::size_t kMaxSenderNameSize = 10;
 
 enum class FrameKind {
     Legacy,
@@ -20,9 +23,11 @@ struct DecodedFrame {
     FrameKind kind = FrameKind::Legacy;
     uint32_t token = 0;
     std::vector<uint8_t> payload;
+    std::string sender_name;
 };
 
 std::vector<uint8_t> encodeData(uint32_t token, const std::vector<uint8_t>& payload);
+std::vector<uint8_t> encodeData(uint32_t token, const std::vector<uint8_t>& payload, std::string_view sender_name);
 std::vector<uint8_t> encodeAcknowledgement(uint32_t token);
 DecodedFrame decode(const std::vector<uint8_t>& bytes);
 
