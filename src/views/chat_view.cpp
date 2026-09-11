@@ -1115,12 +1115,12 @@ private:
         _cancel->align(LV_ALIGN_CENTER, -55, 52);
         _send->configure(Frame{0, 0, 100, 23}, "Enter: Send", &lv_font_montserrat_14);
         _send->align(LV_ALIGN_CENTER, 60, 52);
+        _input->setOneLine(false);
         _input->setSize(280, 68);
         _input->align(LV_ALIGN_CENTER, 0, -4);
         _input->setRadius(8);
         _input->setPadding(8, 18, 10, 10);
         _input->setTextFont(&lv_font_montserrat_14);
-        _input->setOneLine(false);
         _input->setMaxLength(kMaxMessageBytes);
     }
 
