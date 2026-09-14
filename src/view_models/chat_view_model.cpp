@@ -91,7 +91,7 @@ void ChatViewModel::onKey(uint32_t key)
         if (_section.get() == ChatSection::Messages) {
             requestScroll(kMessageScrollStep);
         } else {
-            _section.set(ChatSection::Messages);
+            requestScroll(kMessageScrollStep);
         }
         return;
     }
@@ -99,7 +99,7 @@ void ChatViewModel::onKey(uint32_t key)
         if (_section.get() == ChatSection::Messages) {
             requestScroll(-kMessageScrollStep);
         } else {
-            _section.set(ChatSection::Info);
+            requestScroll(-kMessageScrollStep);
         }
         return;
     }
