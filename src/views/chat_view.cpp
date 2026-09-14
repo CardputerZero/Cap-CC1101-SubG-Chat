@@ -405,7 +405,7 @@ public:
                                         LV_OPA_TRANSP)),
           _empty_label(std::make_unique<TextLabel>(_panel->raw_ptr(), "No messages yet", Frame{0, 60, 320, 16},
                                                    &lv_font_montserrat_12, 0xB2B2B2, LV_TEXT_ALIGN_CENTER)),
-          _empty_hint(std::make_unique<TextLabel>(_panel->raw_ptr(), "Type anything to send", Frame{0, 78, 320, 14},
+          _empty_hint(std::make_unique<TextLabel>(_panel->raw_ptr(), "Type anything to send", Frame{0, 78, 320, 16},
                                                   &lv_font_montserrat_12, 0x5FE492, LV_TEXT_ALIGN_CENTER))
     {
         if (showTitle) {
@@ -1183,8 +1183,7 @@ private:
         _input->setRadius(8);
         _input->setPadding(8, 18, 10, 10);
         _input->setTextFont(&lv_font_montserrat_14);
-        // Keep one extra slot so an attempted overflow can update the visible limit status.
-        _input->setMaxLength(kMaxMessageBytes + 1);
+        _input->setMaxLength(kMaxMessageBytes);
     }
 
     void configureNicknameLayout()
@@ -1207,8 +1206,7 @@ private:
         _input->setPadding(5, 8, 6, 6);
         _input->setTextFont(&lv_font_montserrat_12);
         _input->setOneLine(true);
-        // Keep one extra slot so an attempted overflow can update the visible limit status.
-        _input->setMaxLength(kMaxDeviceNameBytes + 1);
+        _input->setMaxLength(kMaxDeviceNameBytes);
     }
 
     void setupInput()
@@ -1224,6 +1222,7 @@ private:
         _input->setOutlineWidth(0, LV_STATE_FOCUSED | LV_STATE_FOCUS_KEY);
         constexpr lv_style_selector_t cursorStyle = LV_PART_CURSOR | LV_STATE_FOCUSED;
         _input->setBorderColor(lv_color_hex(kDeepBlue), cursorStyle);
+        _input->addEventCb(onInputInsert, LV_EVENT_INSERT, this);
         _input->addEventCb(onInputValueChanged, LV_EVENT_VALUE_CHANGED, this);
     }
 
@@ -1268,10 +1267,21 @@ private:
         }
 
         const char* text = lv_textarea_get_text(self->_input->raw_ptr());
-        const std::size_t limit = self->_mode == EditorMode::Nickname ? kMaxDeviceNameBytes : kMaxMessageBytes;
-        const bool exceedsLimit = text && std::string_view(text).size() > limit;
         self->_view_model.setDraft(text ? text : "");
-        if (exceedsLimit) {
+    }
+
+    static void onInputInsert(lv_event_t* event)
+    {
+        auto* self = static_cast<ComposeDialog*>(lv_event_get_user_data(event));
+        const char* inserted = static_cast<const char*>(lv_event_get_param(event));
+        if (!self || self->_updating_text || !inserted || inserted[0] == LV_KEY_DEL || inserted[0] == LV_KEY_BACKSPACE) {
+            return;
+        }
+
+        const char* text = lv_textarea_get_text(self->_input->raw_ptr());
+        const std::size_t limit = self->_mode == EditorMode::Nickname ? kMaxDeviceNameBytes : kMaxMessageBytes;
+        if (text && std::string_view(text).size() >= limit) {
+            self->_input->setInsertReplace("");
             self->setStatus(self->_mode == EditorMode::Nickname ? "10 byte limit" : "Message is too long");
         }
     }
