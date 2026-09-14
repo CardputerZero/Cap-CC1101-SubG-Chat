@@ -3,11 +3,14 @@
 #include "radio/radio_types.hpp"
 #include "radio/radio_worker.hpp"
 #include <algorithm>
+#include <cstdlib>
 #include <cstdio>
 #include <exception>
 #include <iomanip>
+#include <pwd.h>
 #include <sstream>
 #include <type_traits>
+#include <unistd.h>
 #include <utility>
 #include <variant>
 
@@ -17,6 +20,19 @@ namespace {
 constexpr std::size_t kMaxEventsPerTick = 16;
 constexpr uint32_t kCc1101SpiSpeedHz    = 500000;
 constexpr uint16_t kCc1101SyncWord      = 0x12AD;
+
+std::string currentUserName()
+{
+    const char* userName = std::getenv("SUDO_USER");
+    if (!userName || userName[0] == '\0') {
+        const passwd* account = getpwuid(geteuid());
+        userName = account && account->pw_name && account->pw_name[0] != '\0' ? account->pw_name : "CC1101";
+    }
+
+    std::string name{userName};
+    name.resize(std::min(name.size(), kMaxDeviceNameBytes));
+    return name;
+}
 
 std::string printablePayload(const std::vector<uint8_t>& payload)
 {
@@ -91,6 +107,7 @@ void ChatModel::start()
     ChatRadioInfo info;
     info.state       = RadioUiState::Initializing;
     info.ready       = false;
+    info.deviceName  = currentUserName();
     info.diagnostics = "Starting radio";
     _radio_info.set(std::move(info));
 
@@ -190,7 +207,9 @@ void ChatModel::tick(uint32_t nowMs)
                     auto info                 = _radio_info.get();
                     info.ready                = true;
                     info.initializationFailed = false;
-                    info.spiDevice            = value.info.backend_name;
+                    if (value.info.mock) {
+                        info.spiDevice = "SDL mock";
+                    }
                     info.chipVersion          = versionText(value.info.chip_version);
                     info.frequencyMhz         = value.info.frequency_mhz;
                     info.bitRateKbps          = value.info.bit_rate_kbps;
@@ -217,11 +236,12 @@ void ChatModel::tick(uint32_t nowMs)
                     _radio_info.set(std::move(info));
 
                     ChatMessage message;
-                    message.text     = printablePayload(value.packet.data);
-                    message.outgoing = false;
-                    message.rssiDbm  = value.packet.rssi_dbm;
-                    message.lqi      = value.packet.lqi;
-                    message.crcOk    = value.packet.crc_ok;
+                    message.text       = printablePayload(value.packet.data);
+                    message.senderName = std::move(value.sender_name);
+                    message.outgoing   = false;
+                    message.rssiDbm    = value.packet.rssi_dbm;
+                    message.lqi        = value.packet.lqi;
+                    message.crcOk      = value.packet.crc_ok;
                     appendMessage(std::move(message));
                 } else if constexpr (std::is_same_v<Event, radio::RadioTxStartedEvent>) {
                     auto info        = _radio_info.get();
@@ -269,6 +289,12 @@ void ChatModel::beginCompose(char firstCharacter)
     setComposeStatus("");
 }
 
+void ChatModel::beginDeviceNameEdit()
+{
+    _draft.set(_radio_info.get().deviceName);
+    setComposeStatus("");
+}
+
 void ChatModel::setDraft(std::string value)
 {
     value.erase(std::remove_if(value.begin(), value.end(),
@@ -288,7 +314,7 @@ void ChatModel::appendDraft(char character)
     }
     std::string value = _draft.get();
     if (value.size() >= kMaxMessageBytes) {
-        setComposeStatus("56 byte limit");
+        setComposeStatus(std::to_string(kMaxMessageBytes) + " byte limit");
         return;
     }
     value.push_back(character);
@@ -330,7 +356,8 @@ bool ChatModel::sendDraft()
 
     radio::RadioSendCommand command;
     const uint64_t transactionId = _next_tx_id++;
-    command.id                  = transactionId;
+    command.id          = transactionId;
+    command.sender_name = _radio_info.get().deviceName;
     command.payload.assign(message.begin(), message.end());
     const radio::RadioPostResult result = _radio_worker->post(radio::RadioCommand{std::move(command)});
     if (result != radio::RadioPostResult::Accepted) {
@@ -346,6 +373,25 @@ bool ChatModel::sendDraft()
     _pending_messages.emplace(transactionId, messageId);
     _draft.set("");
     setComposeStatus("");
+    return true;
+}
+
+bool ChatModel::saveDeviceName()
+{
+    const std::string name = _draft.get();
+    if (name.empty() || name.find_first_not_of(' ') == std::string::npos) {
+        setComposeStatus("Name is empty");
+        return false;
+    }
+    if (name.size() > kMaxDeviceNameBytes) {
+        setComposeStatus("10 byte limit");
+        return false;
+    }
+
+    auto info       = _radio_info.get();
+    info.deviceName = name;
+    _radio_info.set(std::move(info));
+    clearDraft();
     return true;
 }
 

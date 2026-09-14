@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(M5CardputerZeroCapCC1101SubGChat VERSION 0.1.8 LANGUAGES C CXX ASM)
+project(M5CardputerZeroCapCC1101SubGChat VERSION 0.1.9 LANGUAGES C CXX ASM)
 
 option(CC1101_CHAT_USE_SDL "Use LVGL's SDL backend and mock radio" ON)
 option(BUILD_TESTING "Build CC1101 Chat tests" OFF)
@@ -197,6 +197,7 @@ add_executable(${CC1101_CHAT_BIN_NAME}
 
 target_include_directories(${CC1101_CHAT_BIN_NAME} PRIVATE "${CC1101_CHAT_SRC_DIR}")
 target_compile_definitions(${CC1101_CHAT_BIN_NAME} PRIVATE
+    CC1101_CHAT_APP_VERSION=\"${PROJECT_VERSION}\"
     CC1101_CHAT_USE_MOCK_RADIO=$<IF:$<BOOL:${CC1101_CHAT_USE_SDL}>,1,0>
     CC1101_CHAT_ENABLE_LINUX_RADIO=$<IF:$<BOOL:${CC1101_CHAT_USE_SDL}>,0,1>
 )

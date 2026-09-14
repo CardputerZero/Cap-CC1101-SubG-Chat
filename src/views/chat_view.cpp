@@ -5,6 +5,7 @@
 #include <lvgl/lvgl_cpp/label.hpp>
 #include <lvgl/lvgl_cpp/text_area.hpp>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <deque>
@@ -43,20 +44,56 @@ constexpr int32_t kInitializationDialogWidth   = 286;
 constexpr int32_t kInitializationDialogHeight  = 124;
 constexpr int32_t kInitializationDialogHiddenY = -150;
 constexpr uint32_t kDeepBlue                   = 0x123B5D;
+constexpr uint32_t kDeepRed                    = 0x9B2C2C;
+constexpr char kSenderNameRecolorTag[]         = "#6B4423 ";
 constexpr int32_t kComposeTextLetterSpacing    = 2;
 constexpr int32_t kInfoDividerInset             = 12;
-constexpr int32_t kInfoTopDividerY              = 42;
-constexpr int32_t kInfoFieldCaptionY            = 48;
-constexpr int32_t kInfoFieldValueY              = 61;
-constexpr int32_t kInfoBottomDividerY           = 84;
-constexpr int32_t kInfoLinkCaptionWidth         = 36;
-constexpr int32_t kInfoLinkRowY                 = 92;
-constexpr int32_t kInfoRadioProfileY            = 110;
-constexpr int32_t kInfoHardwareProfileY         = 125;
-constexpr int32_t kInfoStatsY                   = 141;
-constexpr char kInfoValueRecolorTag[]            = "#DDE0E4 ";
+constexpr int32_t kInfoTopDividerY              = 57;
+constexpr int32_t kInfoCrcY                     = 40;
+constexpr int32_t kInfoTableY                   = 59;
+constexpr int32_t kInfoTableWidth               = 304;
+constexpr int32_t kInfoTableHeight              = 94;
+constexpr int32_t kInfoBottomDividerY           = 154;
+constexpr int32_t kInfoTableLabelWidth          = kInfoTableWidth / 3;
+constexpr int32_t kInfoTableValueWidth          = kInfoTableWidth - kInfoTableLabelWidth;
+constexpr int32_t kInfoTableRowHeight            = 18;
+constexpr int32_t kInfoScrollbarWidth           = 4;
+constexpr uint32_t kInfoScrollbarColor           = 0x4E5157;
+constexpr uint32_t kInfoTableDividerColor        = 0x4E5157;
+constexpr int32_t kDeviceNameDialogX             = 8;
+constexpr int32_t kDeviceNameDialogY             = 87;
+constexpr int32_t kDeviceNameDialogWidth         = 304;
+constexpr int32_t kDeviceNameDialogHeight        = 68;
 constexpr char kPrintableAscii[] =
     " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+
+enum class InfoRowId : uint8_t {
+    Nickname,
+    Rssi,
+    Lqi,
+    Chip,
+    Link,
+    Version,
+    Rate,
+    Bandwidth,
+    Deviation,
+    Power,
+    MaxPayload,
+    Sync,
+    Spi,
+    Count,
+};
+
+constexpr std::size_t kInfoRowCount = static_cast<std::size_t>(InfoRowId::Count);
+constexpr std::array<std::string_view, kInfoRowCount> kInfoRowCaptions{
+    "Nickname", "Signal (dBm)", "Link Quality", "Chip Version", "Frequency", "Version", "Bit Rate", "Bandwidth",
+    "Deviation", "Power (dBm)", "Payload Limit", "Sync Word", "SPI Device",
+};
+
+constexpr std::size_t infoRowIndex(InfoRowId row)
+{
+    return static_cast<std::size_t>(row);
+}
 
 struct Frame {
     int32_t x;
@@ -109,10 +146,10 @@ public:
 class ActionButton {
 public:
     ActionButton(lv_obj_t* parent, Frame frame, std::string_view text, uint32_t background, uint32_t foreground,
-                 std::function<void()> action)
+                 std::function<void()> action, const lv_font_t* font = &lv_font_montserrat_14)
         : _button(std::make_unique<Panel>(parent, frame, background, LV_OPA_COVER, 5)),
           _label(std::make_unique<TextLabel>(_button->raw_ptr(), text, Frame{0, 0, frame.width, LV_SIZE_CONTENT},
-                                             &lv_font_montserrat_14, foreground, LV_TEXT_ALIGN_CENTER))
+                                             font, foreground, LV_TEXT_ALIGN_CENTER))
     {
         _button->addFlag(LV_OBJ_FLAG_CLICKABLE);
         _button->onClick().connect(std::move(action));
@@ -122,6 +159,16 @@ public:
     void align(lv_align_t alignment, int32_t x, int32_t y)
     {
         _button->align(alignment, x, y);
+    }
+
+    void configure(Frame frame, std::string_view text, const lv_font_t* font)
+    {
+        _button->setSize(frame.width, frame.height);
+        _button->align(LV_ALIGN_TOP_LEFT, frame.x, frame.y);
+        _label->setText(text);
+        _label->setSize(frame.width, LV_SIZE_CONTENT);
+        _label->setTextFont(font);
+        _label->align(LV_ALIGN_CENTER, 0, 0);
     }
 
 private:
@@ -148,6 +195,9 @@ std::string messageMetadata(const ChatMessage& message)
 {
     char metadata[64] = {};
     if (!message.outgoing) {
+        if (!message.senderName.empty()) {
+            return "From " + message.senderName;
+        }
         std::snprintf(metadata, sizeof(metadata), "%.0f dBm  /  LQI %u%s", message.rssiDbm,
                       static_cast<unsigned>(message.lqi), message.crcOk ? "" : "  /  CRC!");
     } else if (message.sendPending) {
@@ -187,8 +237,11 @@ public:
           _row(std::make_unique<Panel>(parent, Frame{0, 0, LV_PCT(100), LV_SIZE_CONTENT}, 0x000000, LV_OPA_TRANSP))
     {
         const std::string displayText = message.text.empty() ? "<empty>" : message.text;
-        const std::string metadata    = messageMetadata(message);
-        const int32_t bubbleWidth     = bubbleWidthFor(displayText, metadata);
+        const std::string metadataText = messageMetadata(message);
+        const std::string metadata = !message.outgoing && !message.senderName.empty()
+                                         ? std::string{"From "} + kSenderNameRecolorTag + message.senderName + '#'
+                                         : metadataText;
+        const int32_t bubbleWidth = bubbleWidthFor(displayText, metadataText);
 
         _row->setFlexFlow(LV_FLEX_FLOW_ROW);
         _row->setFlexAlign(_outgoing ? LV_FLEX_ALIGN_END : LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START,
@@ -210,10 +263,12 @@ public:
             std::make_unique<TextLabel>(_bubble->raw_ptr(), displayText, Frame{0, 0, bubbleWidth - 20, LV_SIZE_CONTENT},
                                         &lv_font_montserrat_12, 0x000000, LV_TEXT_ALIGN_LEFT);
         if (!metadata.empty()) {
+            const uint32_t metadataColor =
+                message.sendPending ? kDeepBlue : (message.sendFailed ? kDeepRed : 0x7E7E7E);
             _metadata = std::make_unique<TextLabel>(
                 _bubble->raw_ptr(), metadata, Frame{0, 0, bubbleWidth - 20, LV_SIZE_CONTENT}, &lv_font_montserrat_10,
-                message.sendPending ? kDeepBlue : (message.sendFailed ? 0x9B2C2C : 0x7E7E7E),
-                LV_TEXT_ALIGN_RIGHT);
+                metadataColor, LV_TEXT_ALIGN_RIGHT);
+            lv_label_set_recolor(_metadata->raw_ptr(), !message.outgoing && !message.senderName.empty());
         }
     }
 
@@ -350,7 +405,7 @@ public:
                                         LV_OPA_TRANSP)),
           _empty_label(std::make_unique<TextLabel>(_panel->raw_ptr(), "No messages yet", Frame{0, 60, 320, 16},
                                                    &lv_font_montserrat_12, 0xB2B2B2, LV_TEXT_ALIGN_CENTER)),
-          _empty_hint(std::make_unique<TextLabel>(_panel->raw_ptr(), "Type anything to send", Frame{0, 78, 320, 14},
+          _empty_hint(std::make_unique<TextLabel>(_panel->raw_ptr(), "Type anything to send", Frame{0, 78, 320, 16},
                                                   &lv_font_montserrat_12, 0x5FE492, LV_TEXT_ALIGN_CENTER))
     {
         if (showTitle) {
@@ -613,13 +668,14 @@ private:
     }
 };
 
-class InfoField {
+class InfoTableRow {
 public:
-    InfoField(lv_obj_t* parent, std::string_view caption, int32_t x, int32_t width)
-        : _caption(std::make_unique<TextLabel>(parent, caption, Frame{x, kInfoFieldCaptionY, width, 11}, &lv_font_montserrat_10,
-                                               0x777B82, LV_TEXT_ALIGN_LEFT)),
-          _value(std::make_unique<TextLabel>(parent, "", Frame{x, kInfoFieldValueY, width, 17}, &lv_font_montserrat_12, 0xDDE0E4,
-                                             LV_TEXT_ALIGN_LEFT))
+    InfoTableRow(lv_obj_t* parent, std::string_view caption, int32_t y)
+        : _caption(std::make_unique<TextLabel>(parent, caption, Frame{0, y, kInfoTableLabelWidth, kInfoTableRowHeight},
+                                               &lv_font_montserrat_14, 0x777B82, LV_TEXT_ALIGN_CENTER)),
+          _value(std::make_unique<TextLabel>(parent, "",
+                                             Frame{kInfoTableLabelWidth, y, kInfoTableValueWidth, kInfoTableRowHeight},
+                                             &lv_font_montserrat_14, 0xDDE0E4, LV_TEXT_ALIGN_CENTER))
     {
         _value->setLongMode(LV_LABEL_LONG_MODE_DOTS);
     }
@@ -636,48 +692,64 @@ private:
 
 class RadioInfoView {
 public:
-    explicit RadioInfoView(lv_obj_t* parent)
+    RadioInfoView(lv_obj_t* parent, ChatViewModel& viewModel)
         : _panel(std::make_unique<Panel>(parent, Frame{0, 0, kScreenWidth, kScreenHeight}, 0x000000, LV_OPA_TRANSP)),
           _title(std::make_unique<TextLabel>(_panel->raw_ptr(), "CC1101 Info", Frame{0, 0, 320, 18},
                                              &lv_font_montserrat_14, 0xE4E4E4, LV_TEXT_ALIGN_CENTER)),
           _status_dot(
               std::make_unique<Panel>(_panel->raw_ptr(), Frame{0, 0, 6, 6}, 0xC9A45C, LV_OPA_COVER, LV_RADIUS_CIRCLE)),
-          _status_label(std::make_unique<TextLabel>(_panel->raw_ptr(), "", Frame{20, 22, 180, 16},
-                                                    &lv_font_montserrat_10, 0xDDE0E4, LV_TEXT_ALIGN_LEFT)),
-          _chip_label(std::make_unique<TextLabel>(_panel->raw_ptr(), "CC1101", Frame{220, 22, 92, 16},
-                                                  &lv_font_montserrat_10, 0xDDE0E4, LV_TEXT_ALIGN_RIGHT)),
+          _status_label(std::make_unique<TextLabel>(_panel->raw_ptr(), "", Frame{20, 22, 160, 18},
+                                                    &lv_font_montserrat_14, 0xDDE0E4, LV_TEXT_ALIGN_LEFT)),
+          _change_name(std::make_unique<ActionButton>(
+              _panel->raw_ptr(), Frame{188, 20, 132, 20}, "Enter: Nickname", 0xFED40D, 0x5E4D00,
+              [&viewModel]() { viewModel.openDeviceNameEditor(); }, &lv_font_montserrat_14)),
           _top_divider(std::make_unique<Panel>(
               _panel->raw_ptr(),
               Frame{kInfoDividerInset, kInfoTopDividerY, kScreenWidth - kInfoDividerInset * 2, 1}, 0x25272B,
               LV_OPA_COVER)),
-          _device(std::make_unique<InfoField>(_panel->raw_ptr(), "DEVICE", 8, 148)),
-          _rssi(std::make_unique<InfoField>(_panel->raw_ptr(), "RSSI", 166, 66)),
-          _lqi(std::make_unique<InfoField>(_panel->raw_ptr(), "LQI", 240, 72)),
           _bottom_divider(std::make_unique<Panel>(
               _panel->raw_ptr(),
               Frame{kInfoDividerInset, kInfoBottomDividerY, kScreenWidth - kInfoDividerInset * 2, 1}, 0x25272B,
               LV_OPA_COVER)),
-          _link_caption(std::make_unique<TextLabel>(_panel->raw_ptr(), "LINK",
-                                                    Frame{8, kInfoLinkRowY + 2, kInfoLinkCaptionWidth, 11},
-                                                    &lv_font_montserrat_10, 0x777B82, LV_TEXT_ALIGN_LEFT)),
-          _link_value(std::make_unique<TextLabel>(
-              _panel->raw_ptr(), "",
-              Frame{8 + kInfoLinkCaptionWidth, kInfoLinkRowY, kScreenWidth - 16 - kInfoLinkCaptionWidth, 16},
-              &lv_font_montserrat_12, 0xDDE0E4, LV_TEXT_ALIGN_LEFT)),
-          _radio_profile(std::make_unique<TextLabel>(_panel->raw_ptr(), "", Frame{8, kInfoRadioProfileY, 304, 13},
-                                                     &lv_font_montserrat_10, 0x777B82, LV_TEXT_ALIGN_LEFT)),
-          _hardware_profile(std::make_unique<TextLabel>(_panel->raw_ptr(), "", Frame{8, kInfoHardwareProfileY, 304, 13},
-                                                        &lv_font_montserrat_10, 0x777B82, LV_TEXT_ALIGN_LEFT)),
-          _stats_value(std::make_unique<TextLabel>(_panel->raw_ptr(), "", Frame{8, kInfoStatsY, 304, 13},
-                                                   &lv_font_montserrat_10, 0x777B82, LV_TEXT_ALIGN_LEFT))
+          _stats_value(std::make_unique<TextLabel>(_panel->raw_ptr(), "",
+                                                   Frame{8, kInfoCrcY, kInfoTableWidth, kInfoTableRowHeight},
+                                                   &lv_font_montserrat_14, 0x777B82, LV_TEXT_ALIGN_LEFT)),
+          _table(std::make_unique<Container>(_panel->raw_ptr())),
+          _table_content(std::make_unique<Panel>(
+              _table->raw_ptr(), Frame{0, 0, kInfoTableWidth, kInfoTableRowHeight * static_cast<int32_t>(kInfoRowCount)},
+              0x000000, LV_OPA_TRANSP)),
+          _column_divider(std::make_unique<Panel>(
+              _panel->raw_ptr(), Frame{kInfoTableLabelWidth, kInfoTableY, 1, kInfoTableHeight}, kInfoTableDividerColor,
+              LV_OPA_COVER)),
+          _rows{},
+          _row_dividers{}
     {
+        _table->setPos(0, kInfoTableY);
+        _table->setSize(kScreenWidth, kInfoTableHeight);
+        _table->setBgOpa(LV_OPA_TRANSP);
+        _table->setBorderWidth(0);
+        _table->setShadowWidth(0);
+        _table->setPaddingAll(0);
+        _table->setScrollbarMode(LV_SCROLLBAR_MODE_ON);
+        _table->setScrollDir(LV_DIR_VER);
+        lv_obj_set_style_width(_table->raw_ptr(), kInfoScrollbarWidth, LV_PART_SCROLLBAR);
+        lv_obj_set_style_bg_color(_table->raw_ptr(), lv_color_hex(kInfoScrollbarColor), LV_PART_SCROLLBAR);
+        lv_obj_set_style_bg_opa(_table->raw_ptr(), LV_OPA_COVER, LV_PART_SCROLLBAR);
+        lv_obj_set_style_radius(_table->raw_ptr(), kInfoScrollbarWidth / 2, LV_PART_SCROLLBAR);
+
+        for (std::size_t index = 0; index < kInfoRowCount; ++index) {
+            _rows[index] = std::make_unique<InfoTableRow>(
+                _table_content->raw_ptr(), kInfoRowCaptions[index], static_cast<int32_t>(index) * kInfoTableRowHeight);
+        }
+        for (std::size_t index = 1; index < kInfoRowCount; ++index) {
+            _row_dividers[index - 1] = std::make_unique<Panel>(
+                _table_content->raw_ptr(),
+                Frame{0, static_cast<int32_t>(index) * kInfoTableRowHeight, kInfoTableWidth, 1}, kInfoTableDividerColor,
+                LV_OPA_COVER);
+        }
+
         _status_dot->alignTo(*_status_label, LV_ALIGN_OUT_LEFT_MID, -6, 0);
-        _link_value->setLongMode(LV_LABEL_LONG_MODE_DOTS);
-        _radio_profile->setLongMode(LV_LABEL_LONG_MODE_DOTS);
-        _hardware_profile->setLongMode(LV_LABEL_LONG_MODE_DOTS);
         _stats_value->setLongMode(LV_LABEL_LONG_MODE_DOTS);
-        lv_label_set_recolor(_radio_profile->raw_ptr(), true);
-        lv_label_set_recolor(_hardware_profile->raw_ptr(), true);
     }
 
     void setInfo(const ChatRadioInfo& info)
@@ -701,49 +773,57 @@ public:
 
         _status_label->setText(radioUiStateName(info.state));
         _status_dot->setBgColor(lv_color_hex(stateColor));
-        _device->setValue(info.spiDevice.empty() ? "Unavailable" : info.spiDevice);
+        _rows[infoRowIndex(InfoRowId::Nickname)]->setValue(info.deviceName.empty() ? "Unnamed" : info.deviceName);
 
         char value[160] = {};
         if (info.state == RadioUiState::Error) {
-            _chip_label->setText("R: RETRY");
+            _rows[infoRowIndex(InfoRowId::Chip)]->setValue("R: RETRY");
         } else if (info.chipVersion.empty() || info.chipVersion == "--") {
-            _chip_label->setText("CC1101");
-        } else if (info.chipVersion.rfind("CC1101", 0) == 0) {
-            _chip_label->setText(info.chipVersion);
+            _rows[infoRowIndex(InfoRowId::Chip)]->setValue("--");
         } else {
-            std::snprintf(value, sizeof(value), "CC1101 %s", info.chipVersion.c_str());
-            _chip_label->setText(value);
+            _rows[infoRowIndex(InfoRowId::Chip)]->setValue(info.chipVersion);
         }
 
         std::snprintf(value, sizeof(value), "%.0f dBm", info.rssiDbm);
-        _rssi->setValue(value);
+        _rows[infoRowIndex(InfoRowId::Rssi)]->setValue(value);
         std::snprintf(value, sizeof(value), "%u", static_cast<unsigned>(info.lqi));
-        _lqi->setValue(value);
+        _rows[infoRowIndex(InfoRowId::Lqi)]->setValue(value);
 
         std::snprintf(value, sizeof(value), "%.3f MHz", info.frequencyMhz);
-        _link_value->setText(value);
+        _rows[infoRowIndex(InfoRowId::Link)]->setValue(value);
+
+        const std::string appVersion = std::string("v") + CC1101_CHAT_APP_VERSION;
+        _rows[infoRowIndex(InfoRowId::Version)]->setValue(appVersion);
 
         if (info.bitRateKbps > 0.0F) {
-            std::snprintf(value, sizeof(value), "RATE %s%.1fk#   BW %s%.0fk#   DEV %s%.1fk#   PWR %s%d dBm#",
-                          kInfoValueRecolorTag, info.bitRateKbps, kInfoValueRecolorTag, info.rxBandwidthKhz,
-                          kInfoValueRecolorTag, info.deviationKhz, kInfoValueRecolorTag,
-                          static_cast<int>(info.outputPowerDbm));
-            _radio_profile->setText(value);
+            std::snprintf(value, sizeof(value), "%.1fk", info.bitRateKbps);
+            _rows[infoRowIndex(InfoRowId::Rate)]->setValue(value);
+            std::snprintf(value, sizeof(value), "%.0fk", info.rxBandwidthKhz);
+            _rows[infoRowIndex(InfoRowId::Bandwidth)]->setValue(value);
+            std::snprintf(value, sizeof(value), "%.1fk", info.deviationKhz);
+            _rows[infoRowIndex(InfoRowId::Deviation)]->setValue(value);
+            std::snprintf(value, sizeof(value), "%d dBm", static_cast<int>(info.outputPowerDbm));
+            _rows[infoRowIndex(InfoRowId::Power)]->setValue(value);
         } else {
-            std::snprintf(value, sizeof(value), "RATE %s--#   BW %s--#   DEV %s--#   PWR %s--#",
-                          kInfoValueRecolorTag, kInfoValueRecolorTag, kInfoValueRecolorTag, kInfoValueRecolorTag);
-            _radio_profile->setText(value);
+            _rows[infoRowIndex(InfoRowId::Rate)]->setValue("--");
+            _rows[infoRowIndex(InfoRowId::Bandwidth)]->setValue("--");
+            _rows[infoRowIndex(InfoRowId::Deviation)]->setValue("--");
+            _rows[infoRowIndex(InfoRowId::Power)]->setValue("--");
         }
 
         if (info.spiSpeedHz > 0 && info.syncWord > 0) {
-            std::snprintf(value, sizeof(value), "MAX %s%zuB#   SYNC %s%04X#   SPI %s%uk#", kInfoValueRecolorTag,
-                          kMaxMessageBytes, kInfoValueRecolorTag, static_cast<unsigned>(info.syncWord),
-                          kInfoValueRecolorTag, static_cast<unsigned>(info.spiSpeedHz / 1000U));
-            _hardware_profile->setText(value);
+            std::snprintf(value, sizeof(value), "%zuB", kMaxMessageBytes);
+            _rows[infoRowIndex(InfoRowId::MaxPayload)]->setValue(value);
+            std::snprintf(value, sizeof(value), "%04X", static_cast<unsigned>(info.syncWord));
+            _rows[infoRowIndex(InfoRowId::Sync)]->setValue(value);
+            std::snprintf(value, sizeof(value), "%uk %s", static_cast<unsigned>(info.spiSpeedHz / 1000U),
+                          info.spiDevice.c_str());
+            _rows[infoRowIndex(InfoRowId::Spi)]->setValue(value);
         } else {
-            std::snprintf(value, sizeof(value), "MAX %s%zuB#   SYNC %s----#   SPI %s--#", kInfoValueRecolorTag,
-                          kMaxMessageBytes, kInfoValueRecolorTag, kInfoValueRecolorTag);
-            _hardware_profile->setText(value);
+            std::snprintf(value, sizeof(value), "%zuB", kMaxMessageBytes);
+            _rows[infoRowIndex(InfoRowId::MaxPayload)]->setValue(value);
+            _rows[infoRowIndex(InfoRowId::Sync)]->setValue("----");
+            _rows[infoRowIndex(InfoRowId::Spi)]->setValue("--");
         }
 
         const bool sendFailed = info.diagnostics.rfind("Send failed:", 0) == 0;
@@ -769,22 +849,25 @@ public:
         _panel->setHidden(hidden);
     }
 
+    void scrollBy(int32_t amount)
+    {
+        _table->scrollByBounded(0, amount, LV_ANIM_ON);
+    }
+
 private:
     std::unique_ptr<Panel> _panel;
     std::unique_ptr<TextLabel> _title;
     std::unique_ptr<Panel> _status_dot;
     std::unique_ptr<TextLabel> _status_label;
-    std::unique_ptr<TextLabel> _chip_label;
+    std::unique_ptr<ActionButton> _change_name;
     std::unique_ptr<Panel> _top_divider;
-    std::unique_ptr<InfoField> _device;
-    std::unique_ptr<InfoField> _rssi;
-    std::unique_ptr<InfoField> _lqi;
     std::unique_ptr<Panel> _bottom_divider;
-    std::unique_ptr<TextLabel> _link_caption;
-    std::unique_ptr<TextLabel> _link_value;
-    std::unique_ptr<TextLabel> _radio_profile;
-    std::unique_ptr<TextLabel> _hardware_profile;
     std::unique_ptr<TextLabel> _stats_value;
+    std::unique_ptr<Container> _table;
+    std::unique_ptr<Panel> _table_content;
+    std::unique_ptr<Panel> _column_divider;
+    std::array<std::unique_ptr<InfoTableRow>, kInfoRowCount> _rows;
+    std::array<std::unique_ptr<Panel>, kInfoRowCount - 1> _row_dividers;
 };
 
 class PageIndicator {
@@ -914,19 +997,16 @@ public:
           _status(std::make_unique<TextLabel>(_panel->raw_ptr(), "", Frame{0, 0, 260, 12}, &lv_font_montserrat_10,
                                               0xFED40D, LV_TEXT_ALIGN_RIGHT)),
           _cancel(std::make_unique<ActionButton>(_panel->raw_ptr(), Frame{0, 0, 110, 23}, "ESC: Cancel", 0x6D6D6D,
-                                                 0xF3F3F3, [&viewModel]() { viewModel.cancelCompose(); })),
+                                                 0xF3F3F3, [&viewModel]() { viewModel.cancelEditor(); })),
           _send(std::make_unique<ActionButton>(_panel->raw_ptr(), Frame{0, 0, 100, 23}, "Enter: Send", 0xFED40D,
-                                               0x5E4D00, [&viewModel]() { viewModel.sendCompose(); })),
+                                               0x5E4D00, [this]() { submit(); })),
           _x(0),
           _y(kComposeHiddenY),
           _width(kComposeOpenWidth),
           _height(kComposeOpenHeight)
     {
-        _prompt->align(LV_ALIGN_CENTER, 0, -56);
         setupInput();
-        _status->align(LV_ALIGN_CENTER, 0, 16);
-        _cancel->align(LV_ALIGN_CENTER, -55, 52);
-        _send->align(LV_ALIGN_CENTER, 60, 52);
+        configureMessageLayout();
         configureOpenAnimation();
         applyAnimatedValue();
         _status->setHidden(true);
@@ -957,17 +1037,28 @@ public:
         _status->setHidden(status.empty());
     }
 
-    void setActive(bool active)
+    void setMode(EditorMode mode)
     {
-        if (active == _active) {
+        if (mode == _mode) {
             return;
         }
 
-        _active = active;
-        if (_active) {
+        const EditorMode previousMode = _mode;
+        _mode                         = mode;
+        if (_mode != EditorMode::None) {
             _hidden = false;
             _panel->setHidden(false);
             _panel->moveForeground();
+            _focus_pending = true;
+        }
+
+        if (_mode == EditorMode::Nickname) {
+            configureNicknameLayout();
+            return;
+        }
+
+        if (_mode == EditorMode::Message) {
+            configureMessageLayout();
             configureOpenAnimation();
             _x.teleport(0);
             _y.teleport(kComposeHiddenY);
@@ -978,12 +1069,16 @@ public:
             _y.move(0);
             _width.move(kComposeDialogWidth);
             _height.move(kComposeDialogHeight);
-            _focus_pending = true;
             return;
         }
 
         _focus_pending = false;
         removeInputFromGroup();
+        if (previousMode == EditorMode::Nickname) {
+            _panel->setHidden(true);
+            _hidden = true;
+            return;
+        }
         configureCloseAnimation();
         _x.move(0);
         _y.move(kComposeHiddenY);
@@ -998,6 +1093,10 @@ public:
             focusInput();
         }
 
+        if (_mode == EditorMode::Nickname) {
+            return;
+        }
+
         const float now_seconds = static_cast<float>(nowMs) / 1000.0F;
         _x.update(now_seconds);
         _y.update(now_seconds);
@@ -1005,7 +1104,7 @@ public:
         _height.update(now_seconds);
         applyAnimatedValue();
 
-        if (!_active && _x.done() && _y.done() && _width.done() && _height.done()) {
+        if (_mode == EditorMode::None && _x.done() && _y.done() && _width.done() && _height.done()) {
             _panel->setHidden(true);
             _hidden = true;
         }
@@ -1031,7 +1130,7 @@ private:
     bool _input_in_group = false;
     bool _updating_text  = false;
     bool _focus_pending  = false;
-    bool _active         = false;
+    EditorMode _mode     = EditorMode::None;
     bool _hidden         = true;
 
     static void setupAnimation(AnimateValue& value, float duration, float bounce)
@@ -1064,26 +1163,66 @@ private:
                       static_cast<int32_t>(std::lround(_y.directValue())));
     }
 
-    void setupInput()
+    void configureMessageLayout()
     {
+        _panel->setRadius(14);
+        _prompt->setText("New Message");
+        _prompt->setSize(280, 18);
+        _prompt->setTextFont(&lv_font_montserrat_14);
+        _prompt->align(LV_ALIGN_CENTER, 0, -56);
+        _status->setSize(260, 12);
+        _status->setTextAlign(LV_TEXT_ALIGN_RIGHT);
+        _status->align(LV_ALIGN_CENTER, 0, 16);
+        _cancel->configure(Frame{0, 0, 110, 23}, "ESC: Cancel", &lv_font_montserrat_14);
+        _cancel->align(LV_ALIGN_CENTER, -55, 52);
+        _send->configure(Frame{0, 0, 100, 23}, "Enter: Send", &lv_font_montserrat_14);
+        _send->align(LV_ALIGN_CENTER, 60, 52);
+        _input->setOneLine(false);
         _input->setSize(280, 68);
         _input->align(LV_ALIGN_CENTER, 0, -4);
+        _input->setRadius(8);
+        _input->setPadding(8, 18, 10, 10);
+        _input->setTextFont(&lv_font_montserrat_14);
+        _input->setMaxLength(kMaxMessageBytes);
+    }
+
+    void configureNicknameLayout()
+    {
+        _panel->setSize(kDeviceNameDialogWidth, kDeviceNameDialogHeight);
+        _panel->align(LV_ALIGN_TOP_LEFT, kDeviceNameDialogX, kDeviceNameDialogY);
+        _panel->setRadius(8);
+        _prompt->setText("New Nickname");
+        _prompt->setSize(150, 12);
+        _prompt->align(LV_ALIGN_TOP_LEFT, 8, 3);
+        _prompt->setTextFont(&lv_font_montserrat_10);
+        _status->setSize(108, 11);
+        _status->align(LV_ALIGN_TOP_LEFT, 92, 52);
+        _status->setTextAlign(LV_TEXT_ALIGN_CENTER);
+        _cancel->configure(Frame{8, 48, 80, 17}, "ESC: Cancel", &lv_font_montserrat_10);
+        _send->configure(Frame{204, 48, 92, 17}, "Enter: Save", &lv_font_montserrat_10);
+        _input->setSize(288, 28);
+        _input->align(LV_ALIGN_TOP_LEFT, 8, 17);
+        _input->setRadius(6);
+        _input->setPadding(5, 8, 6, 6);
+        _input->setTextFont(&lv_font_montserrat_12);
+        _input->setOneLine(true);
+        _input->setMaxLength(kMaxDeviceNameBytes);
+    }
+
+    void setupInput()
+    {
         _input->setBgColor(lv_color_hex(0x555555));
         _input->setBgOpa(LV_OPA_COVER);
-        _input->setRadius(8);
         _input->setBorderWidth(0);
         _input->setShadowWidth(0);
-        _input->setPadding(8, 18, 10, 10);
         _input->setScrollbarMode(LV_SCROLLBAR_MODE_OFF);
-        _input->setTextFont(&lv_font_montserrat_14);
         _input->setTextColor(lv_color_hex(0xFFFFFF));
         lv_obj_set_style_text_letter_space(_input->raw_ptr(), kComposeTextLetterSpacing, LV_PART_MAIN);
-        _input->setOneLine(false);
         _input->setAcceptedChars(kPrintableAscii);
-        _input->setMaxLength(kMaxMessageBytes);
         _input->setOutlineWidth(0, LV_STATE_FOCUSED | LV_STATE_FOCUS_KEY);
         constexpr lv_style_selector_t cursorStyle = LV_PART_CURSOR | LV_STATE_FOCUSED;
         _input->setBorderColor(lv_color_hex(kDeepBlue), cursorStyle);
+        _input->addEventCb(onInputInsert, LV_EVENT_INSERT, this);
         _input->addEventCb(onInputValueChanged, LV_EVENT_VALUE_CHANGED, this);
     }
 
@@ -1111,6 +1250,15 @@ private:
         _input_in_group = false;
     }
 
+    void submit()
+    {
+        if (_mode == EditorMode::Message) {
+            _view_model.sendCompose();
+        } else if (_mode == EditorMode::Nickname) {
+            _view_model.saveDeviceName();
+        }
+    }
+
     static void onInputValueChanged(lv_event_t* event)
     {
         auto* self = static_cast<ComposeDialog*>(lv_event_get_user_data(event));
@@ -1121,6 +1269,22 @@ private:
         const char* text = lv_textarea_get_text(self->_input->raw_ptr());
         self->_view_model.setDraft(text ? text : "");
     }
+
+    static void onInputInsert(lv_event_t* event)
+    {
+        auto* self = static_cast<ComposeDialog*>(lv_event_get_user_data(event));
+        const char* inserted = static_cast<const char*>(lv_event_get_param(event));
+        if (!self || self->_updating_text || !inserted || inserted[0] == LV_KEY_DEL || inserted[0] == LV_KEY_BACKSPACE) {
+            return;
+        }
+
+        const char* text = lv_textarea_get_text(self->_input->raw_ptr());
+        const std::size_t limit = self->_mode == EditorMode::Nickname ? kMaxDeviceNameBytes : kMaxMessageBytes;
+        if (text && std::string_view(text).size() >= limit) {
+            self->_input->setInsertReplace("");
+            self->setStatus(self->_mode == EditorMode::Nickname ? "10 byte limit" : "Message is too long");
+        }
+    }
 };
 
 }  // namespace
@@ -1129,7 +1293,7 @@ class ChatView::ChatPager {
 public:
     ChatPager(lv_obj_t* parent, ChatViewModel& viewModel, bool showTitle)
         : _messages(std::make_unique<MessageListView>(parent, showTitle)),
-          _info(std::make_unique<RadioInfoView>(parent)),
+          _info(std::make_unique<RadioInfoView>(parent, viewModel)),
           _indicator(std::make_unique<PageIndicator>(parent)),
           _compose_dialog(std::make_unique<ComposeDialog>(parent, viewModel)),
           _initialization_failure_dialog(std::make_unique<InitializationFailureDialog>(parent, viewModel)),
@@ -1164,14 +1328,14 @@ public:
         _compose_dialog->setStatus(status);
     }
 
-    void setComposeActive(bool active)
+    void setEditorMode(EditorMode mode)
     {
-        _compose_active = active;
-        if (active) {
+        _editor_mode = mode;
+        if (mode != EditorMode::None) {
             _messages->dismissTitle();
             _indicator->setHidden(true);
         }
-        _compose_dialog->setActive(active);
+        _compose_dialog->setMode(mode);
     }
 
     void setInitializationDialogActive(bool active)
@@ -1231,6 +1395,11 @@ public:
         _messages->scrollToBottom();
     }
 
+    void scrollInfo(int32_t amount)
+    {
+        _info->scrollBy(amount);
+    }
+
     void tick(uint32_t nowMs)
     {
         _messages->tick(nowMs);
@@ -1240,7 +1409,7 @@ public:
         applyOpacity();
         _compose_dialog->tick(nowMs);
         _initialization_failure_dialog->tick(nowMs);
-        if (!_compose_active && !_initialization_dialog_active && _compose_dialog->hidden() &&
+        if (_editor_mode == EditorMode::None && !_initialization_dialog_active && _compose_dialog->hidden() &&
             _initialization_failure_dialog->hidden()) {
             _indicator->setHidden(false);
         }
@@ -1263,7 +1432,7 @@ private:
     AnimateValue _info_opacity;
     ChatSection _section               = ChatSection::Messages;
     bool _section_initialized          = false;
-    bool _compose_active               = false;
+    EditorMode _editor_mode            = EditorMode::None;
     bool _initialization_dialog_active = false;
 
     static void configureFade(AnimateValue& opacity)
@@ -1313,14 +1482,14 @@ void ChatView::onEnter(lv_obj_t* parent)
     _view_model.scrollRequest().observe(this, onScrollRequestChanged);
     _view_model.draft().observe(this, onDraftChanged);
     _view_model.composeStatus().observe(this, onComposeStatusChanged);
-    _view_model.composeActive().observe(this, onComposeActiveChanged);
+    _view_model.editorMode().observe(this, onEditorModeChanged);
     _view_model.initializationDialogActive().observe(this, onInitializationDialogActiveChanged);
 }
 
 void ChatView::onExit()
 {
     _view_model.initializationDialogActive().removeObserver();
-    _view_model.composeActive().removeObserver();
+    _view_model.editorMode().removeObserver();
     _view_model.composeStatus().removeObserver();
     _view_model.draft().removeObserver();
     _view_model.scrollRequest().removeObserver();
@@ -1372,6 +1541,8 @@ void ChatView::onScrollRequestChanged(void* context, const ChatScrollRequest& re
     self->_scroll_serial_seen = request.serial;
     if (request.toBottom) {
         self->_pager->scrollMessagesToBottom();
+    } else if (self->_view_model.section().get() == ChatSection::Info) {
+        self->_pager->scrollInfo(request.amount);
     } else {
         self->_pager->scrollMessages(request.amount);
     }
@@ -1393,11 +1564,11 @@ void ChatView::onComposeStatusChanged(void* context, const std::string& status)
     }
 }
 
-void ChatView::onComposeActiveChanged(void* context, const bool& active)
+void ChatView::onEditorModeChanged(void* context, const EditorMode& mode)
 {
     auto* self = static_cast<ChatView*>(context);
     if (self && self->_pager) {
-        self->_pager->setComposeActive(active);
+        self->_pager->setEditorMode(mode);
     }
 }
 

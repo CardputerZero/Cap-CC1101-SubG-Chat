@@ -50,9 +50,9 @@ public:
         return _model.composeStatus();
     }
 
-    smooth_ui_toolkit::SingleObservable<bool>& composeActive()
+    smooth_ui_toolkit::SingleObservable<EditorMode>& editorMode()
     {
-        return _compose_active;
+        return _editor_mode;
     }
 
     smooth_ui_toolkit::SingleObservable<bool>& initializationDialogActive()
@@ -62,12 +62,14 @@ public:
 
     bool modalActive() const
     {
-        return _compose_active.get() || _initialization_dialog_active.get();
+        return _editor_mode.get() != EditorMode::None || _initialization_dialog_active.get();
     }
 
     void setDraft(std::string draft);
-    void cancelCompose();
+    void cancelEditor();
     void sendCompose();
+    void openDeviceNameEditor();
+    void saveDeviceName();
     void dismissInitializationDialog();
     void retryRadio();
 
@@ -75,7 +77,7 @@ private:
     ChatModel& _model;
     smooth_ui_toolkit::SingleObservable<ChatSection> _section{ChatSection::Messages};
     smooth_ui_toolkit::SingleObservable<ChatScrollRequest> _scroll_request{ChatScrollRequest{}};
-    smooth_ui_toolkit::SingleObservable<bool> _compose_active{false};
+    smooth_ui_toolkit::SingleObservable<EditorMode> _editor_mode{EditorMode::None};
     smooth_ui_toolkit::SingleObservable<bool> _initialization_dialog_active{false};
     uint32_t _scroll_serial          = 0;
     RadioUiState _last_state         = RadioUiState::Initializing;

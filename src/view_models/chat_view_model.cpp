@@ -30,7 +30,7 @@ ChatViewModel::ChatViewModel(CC1101ChatRouter& router, ChatModel& model) : ViewM
 void ChatViewModel::onEnter()
 {
     _model.clearDraft();
-    _compose_active.set(false);
+    _editor_mode.set(EditorMode::None);
     const auto& info = _model.radioInfo().get();
     _section.set(info.state == RadioUiState::Error ? ChatSection::Info : ChatSection::Messages);
     _last_state                 = info.state;
@@ -40,9 +40,9 @@ void ChatViewModel::onEnter()
 
 void ChatViewModel::onExit()
 {
-    if (_compose_active.get()) {
+    if (_editor_mode.get() != EditorMode::None) {
         _model.clearDraft();
-        _compose_active.set(false);
+        _editor_mode.set(EditorMode::None);
     }
     _initialization_dialog_active.set(false);
 }
@@ -58,13 +58,14 @@ void ChatViewModel::onKey(uint32_t key)
         return;
     }
 
-    if (_compose_active.get()) {
+    const EditorMode editorMode = _editor_mode.get();
+    if (editorMode != EditorMode::None) {
         if (key == '\x1b') {
-            cancelCompose();
+            cancelEditor();
         } else if (key == '\b' || key == 0x7f) {
             _model.eraseDraftCharacter();
         } else if (key == '\r') {
-            sendCompose();
+            editorMode == EditorMode::Message ? sendCompose() : saveDeviceName();
         } else if (isPrintableAscii(key)) {
             _model.appendDraft(static_cast<char>(key));
         }
@@ -72,7 +73,7 @@ void ChatViewModel::onKey(uint32_t key)
     }
 
     if (_section.get() == ChatSection::Info && _model.radioInfo().get().state == RadioUiState::Error &&
-        (key == '\r' || key == 'r' || key == 'R')) {
+        (key == 'r' || key == 'R')) {
         retryRadio();
         return;
     }
@@ -90,7 +91,7 @@ void ChatViewModel::onKey(uint32_t key)
         if (_section.get() == ChatSection::Messages) {
             requestScroll(kMessageScrollStep);
         } else {
-            _section.set(ChatSection::Messages);
+            requestScroll(kMessageScrollStep);
         }
         return;
     }
@@ -98,17 +99,22 @@ void ChatViewModel::onKey(uint32_t key)
         if (_section.get() == ChatSection::Messages) {
             requestScroll(-kMessageScrollStep);
         } else {
-            _section.set(ChatSection::Info);
+            requestScroll(-kMessageScrollStep);
         }
         return;
     }
 
     if (key == '\r') {
-        openCompose('\0');
+        if (_section.get() == ChatSection::Info) {
+            openDeviceNameEditor();
+        } else {
+            openCompose('\0');
+        }
         return;
     }
 
-    if (isPrintableAscii(key) && key != 'z' && key != 'Z' && key != 'c' && key != 'C') {
+    if (_section.get() == ChatSection::Messages && isPrintableAscii(key) && key != 'z' && key != 'Z' && key != 'c' &&
+        key != 'C') {
         openCompose(static_cast<char>(key));
     }
 }
@@ -123,8 +129,8 @@ void ChatViewModel::tick(uint32_t nowMs)
         _section.set(ChatSection::Info);
     }
     if (initializationFailed && !_last_initialization_failed) {
-        if (_compose_active.get()) {
-            cancelCompose();
+        if (_editor_mode.get() != EditorMode::None) {
+            cancelEditor();
         }
         _section.set(ChatSection::Info);
         _initialization_dialog_active.set(true);
@@ -139,7 +145,7 @@ void ChatViewModel::tick(uint32_t nowMs)
 void ChatViewModel::openCompose(char firstCharacter)
 {
     _model.beginCompose(firstCharacter);
-    _compose_active.set(true);
+    _editor_mode.set(EditorMode::Message);
 }
 
 void ChatViewModel::setDraft(std::string draft)
@@ -147,10 +153,10 @@ void ChatViewModel::setDraft(std::string draft)
     _model.setDraft(std::move(draft));
 }
 
-void ChatViewModel::cancelCompose()
+void ChatViewModel::cancelEditor()
 {
     _model.clearDraft();
-    _compose_active.set(false);
+    _editor_mode.set(EditorMode::None);
 }
 
 void ChatViewModel::sendCompose()
@@ -158,7 +164,20 @@ void ChatViewModel::sendCompose()
     if (_model.sendDraft()) {
         _section.set(ChatSection::Messages);
         requestScrollToBottom();
-        _compose_active.set(false);
+        _editor_mode.set(EditorMode::None);
+    }
+}
+
+void ChatViewModel::openDeviceNameEditor()
+{
+    _model.beginDeviceNameEdit();
+    _editor_mode.set(EditorMode::Nickname);
+}
+
+void ChatViewModel::saveDeviceName()
+{
+    if (_model.saveDeviceName()) {
+        _editor_mode.set(EditorMode::None);
     }
 }
 

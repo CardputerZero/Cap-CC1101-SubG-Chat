@@ -45,11 +45,13 @@ public:
     }
 
     void beginCompose(char firstCharacter = '\0');
+    void beginDeviceNameEdit();
     void setDraft(std::string value);
     void appendDraft(char character);
     void eraseDraftCharacter();
     void clearDraft();
     bool sendDraft();
+    bool saveDeviceName();
     bool retryRadio();
 
 private:
