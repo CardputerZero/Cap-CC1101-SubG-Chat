@@ -51,7 +51,7 @@ std::string printablePayload(const std::vector<uint8_t>& payload)
 std::string versionText(uint8_t version)
 {
     std::ostringstream stream;
-    stream << "v0x" << std::uppercase << std::hex << std::setw(2) << std::setfill('0')
+    stream << "0x" << std::uppercase << std::hex << std::setw(2) << std::setfill('0')
            << static_cast<unsigned int>(version);
     return stream.str();
 }

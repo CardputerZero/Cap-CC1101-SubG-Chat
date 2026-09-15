@@ -16,7 +16,7 @@ public:
     CardputerZeroCc1101Power& operator=(const CardputerZeroCc1101Power&) = delete;
 
     bool enable(std::string& error, const std::atomic_bool* cancel = nullptr);
-    void disable() noexcept;
+    void disable(bool preserve_ext5v = false) noexcept;
     bool enabled() const noexcept;
 
 private:

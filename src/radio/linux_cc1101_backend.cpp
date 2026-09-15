@@ -147,7 +147,7 @@ public:
             _spi->closeDevice();
             _spi.reset();
         }
-        _power.disable();
+        _power.disable(true);
         _open = false;
         if (had_hardware_state) {
             spdlog::info("CC1101 backend: hardware shutdown sequence finished");
