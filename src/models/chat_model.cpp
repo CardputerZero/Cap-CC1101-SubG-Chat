@@ -2,17 +2,25 @@
 
 #include "radio/radio_types.hpp"
 #include "radio/radio_worker.hpp"
+#include <spdlog/spdlog.h>
 #include <algorithm>
+#include <cerrno>
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <pwd.h>
 #include <sstream>
+#include <sys/stat.h>
+#include <system_error>
 #include <type_traits>
 #include <unistd.h>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace cc1101_chat {
 namespace {
@@ -20,6 +28,142 @@ namespace {
 constexpr std::size_t kMaxEventsPerTick = 16;
 constexpr uint32_t kCc1101SpiSpeedHz    = 500000;
 constexpr uint16_t kCc1101SyncWord      = 0x12AD;
+constexpr char kConfigDirectoryName[]   = "M5CardputerZero-Cap-CC1101-SubG-Chat";
+constexpr char kDeviceNameFileName[]    = "nickname";
+
+struct UserConfigLocation {
+    std::filesystem::path directory;
+    uid_t uid = 0;
+    gid_t gid = 0;
+};
+
+UserConfigLocation userConfigLocation()
+{
+    // The desktop entry uses sudo; SUDO_USER identifies whose $HOME should own the setting.
+    const char* sudoUser = std::getenv("SUDO_USER");
+    const passwd* account = sudoUser && sudoUser[0] != '\0' ? getpwnam(sudoUser) : getpwuid(geteuid());
+    if (account && account->pw_dir && account->pw_dir[0] != '\0') {
+        return {std::filesystem::path(account->pw_dir) / ".config" / kConfigDirectoryName, account->pw_uid,
+                account->pw_gid};
+    }
+
+    const char* home = std::getenv("HOME");
+    return {std::filesystem::path(home && home[0] != '\0' ? home : ".") / ".config" / kConfigDirectoryName,
+            geteuid(), getegid()};
+}
+
+bool validDeviceName(const std::string& name)
+{
+    return !name.empty() && name.size() <= kMaxDeviceNameBytes && name.find_first_not_of(' ') != std::string::npos &&
+           std::all_of(name.begin(), name.end(), [](unsigned char character) {
+               return character >= 0x20 && character <= 0x7e;
+           });
+}
+
+std::filesystem::path deviceNameFilePath()
+{
+    return userConfigLocation().directory / kDeviceNameFileName;
+}
+
+std::string loadSavedDeviceName()
+{
+    const auto path = deviceNameFilePath();
+    std::ifstream input(path);
+    if (!input.is_open()) {
+        return {};
+    }
+
+    std::string name;
+    std::getline(input, name);
+    if (!validDeviceName(name)) {
+        spdlog::warn("CC1101 nickname: ignoring invalid value in {}", path.string());
+        return {};
+    }
+
+    spdlog::info("CC1101 nickname: loaded from {}", path.string());
+    return name;
+}
+
+bool saveDeviceNameFile(const std::string& name, std::string& error)
+{
+    const auto location = userConfigLocation();
+    const auto path     = location.directory / kDeviceNameFileName;
+
+    std::error_code filesystemError;
+    std::filesystem::create_directories(location.directory, filesystemError);
+    if (filesystemError) {
+        error = "cannot create " + location.directory.string();
+        return false;
+    }
+    filesystemError.clear();
+    const auto directoryStatus = std::filesystem::symlink_status(location.directory, filesystemError);
+    if (filesystemError || !std::filesystem::is_directory(directoryStatus) ||
+        std::filesystem::is_symlink(directoryStatus)) {
+        error = "cannot create " + location.directory.string();
+        return false;
+    }
+    if (geteuid() == 0 && chown(location.directory.c_str(), location.uid, location.gid) != 0) {
+        error = "cannot set ownership on " + location.directory.string() + ": " + std::strerror(errno);
+        return false;
+    }
+
+    std::string temporaryPattern = path.string() + ".tmp.XXXXXX";
+    std::vector<char> temporaryBuffer(temporaryPattern.begin(), temporaryPattern.end());
+    temporaryBuffer.push_back('\0');
+    const int temporaryFd = mkstemp(temporaryBuffer.data());
+    if (temporaryFd < 0) {
+        error = "cannot create temporary nickname file: " + std::string(std::strerror(errno));
+        return false;
+    }
+    const std::filesystem::path temporary{temporaryBuffer.data()};
+    const auto discardTemporary = [&]() {
+        close(temporaryFd);
+        std::filesystem::remove(temporary, filesystemError);
+    };
+
+    std::size_t offset = 0;
+    while (offset < name.size()) {
+        const ssize_t written = write(temporaryFd, name.data() + offset, name.size() - offset);
+        if (written < 0 && errno == EINTR) {
+            continue;
+        }
+        if (written <= 0) {
+            error = "cannot write " + temporary.string() + ": " + std::strerror(errno);
+            discardTemporary();
+            return false;
+        }
+        offset += static_cast<std::size_t>(written);
+    }
+    if (geteuid() == 0 && fchown(temporaryFd, location.uid, location.gid) != 0) {
+        error = "cannot set ownership on " + temporary.string() + ": " + std::strerror(errno);
+        discardTemporary();
+        return false;
+    }
+    if (fchmod(temporaryFd, S_IRUSR | S_IWUSR) != 0) {
+        error = "cannot set permissions on " + temporary.string() + ": " + std::strerror(errno);
+        discardTemporary();
+        return false;
+    }
+    if (fsync(temporaryFd) != 0) {
+        error = "cannot flush " + temporary.string() + ": " + std::strerror(errno);
+        discardTemporary();
+        return false;
+    }
+    if (close(temporaryFd) != 0) {
+        error = "cannot close " + temporary.string() + ": " + std::strerror(errno);
+        std::filesystem::remove(temporary, filesystemError);
+        return false;
+    }
+
+    std::filesystem::rename(temporary, path, filesystemError);
+    if (filesystemError) {
+        error = "cannot replace " + path.string();
+        std::filesystem::remove(temporary, filesystemError);
+        return false;
+    }
+    spdlog::info("CC1101 nickname: saved to {}", path.string());
+    return true;
+}
 
 std::string currentUserName()
 {
@@ -107,7 +251,10 @@ void ChatModel::start()
     ChatRadioInfo info;
     info.state       = RadioUiState::Initializing;
     info.ready       = false;
-    info.deviceName  = currentUserName();
+    info.deviceName  = loadSavedDeviceName();
+    if (info.deviceName.empty()) {
+        info.deviceName = currentUserName();
+    }
     info.diagnostics = "Starting radio";
     _radio_info.set(std::move(info));
 
@@ -385,6 +532,13 @@ bool ChatModel::saveDeviceName()
     }
     if (name.size() > kMaxDeviceNameBytes) {
         setComposeStatus("10 byte limit");
+        return false;
+    }
+
+    std::string error;
+    if (!saveDeviceNameFile(name, error)) {
+        spdlog::error("CC1101 nickname: {}", error);
+        setComposeStatus("Unable to save nickname");
         return false;
     }
 
