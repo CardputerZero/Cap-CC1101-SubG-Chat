@@ -170,7 +170,7 @@ CardputerZeroCc1101Power::CardputerZeroCc1101Power() : _impl(std::make_unique<Im
 
 CardputerZeroCc1101Power::~CardputerZeroCc1101Power()
 {
-    disable();
+    disable(true);
 }
 
 bool CardputerZeroCc1101Power::enable(std::string& error, const std::atomic_bool* cancel)
@@ -289,7 +289,7 @@ bool CardputerZeroCc1101Power::enable(std::string& error, const std::atomic_bool
 #endif
 }
 
-void CardputerZeroCc1101Power::disable() noexcept
+void CardputerZeroCc1101Power::disable(bool preserve_ext5v) noexcept
 {
 #if defined(CC1101_CHAT_ENABLE_LINUX_RADIO) && CC1101_CHAT_ENABLE_LINUX_RADIO && defined(__linux__)
     if (_impl->gpio26_requested) {
@@ -306,13 +306,18 @@ void CardputerZeroCc1101Power::disable() noexcept
 
     bool ext5v_cleanup_complete = true;
     if (_impl->ext5v_control == Ext5vControl::LedClass && _impl->ext5v_restore_needed) {
-        try {
-            writeLedValue(kExt5vLedName, _impl->previous_ext5v_brightness != 0);
-            spdlog::info("CC1101 power: restored EXT5V LED class brightness to {}", _impl->previous_ext5v_brightness);
+        if (preserve_ext5v) {
+            spdlog::info("CC1101 power: leaving EXT5V LED class enabled for the next application");
             _impl->ext5v_restore_needed = false;
-        } catch (const std::exception& exception) {
-            ext5v_cleanup_complete = false;
-            spdlog::warn("CC1101 power: failed to restore EXT5V LED class state: {}", exception.what());
+        } else {
+            try {
+                writeLedValue(kExt5vLedName, _impl->previous_ext5v_brightness != 0);
+                spdlog::info("CC1101 power: restored EXT5V LED class brightness to {}", _impl->previous_ext5v_brightness);
+                _impl->ext5v_restore_needed = false;
+            } catch (const std::exception& exception) {
+                ext5v_cleanup_complete = false;
+                spdlog::warn("CC1101 power: failed to restore EXT5V LED class state: {}", exception.what());
+            }
         }
     } else if (_impl->ext5v_control == Ext5vControl::LegacyGpio) {
         try {
