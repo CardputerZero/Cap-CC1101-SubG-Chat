@@ -56,6 +56,7 @@ Key controls:
 - Enter or a printable key: open the message editor
 - Enter sends; Esc cancels or exits; Backspace/Delete and Left/Right edit
 - `R` or Enter on the Info page: retry radio initialization after an error
+- `Fn+H` (`H` on desktop): open Help; Esc closes it
 
 ## Hardware
 

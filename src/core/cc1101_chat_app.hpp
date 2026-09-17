@@ -4,9 +4,11 @@
 #include "models/chat_model.hpp"
 #include "view_models/chat_view_model.hpp"
 #include "views/chat_view.hpp"
+#include "views/help_view.hpp"
 #include "views/view.hpp"
 #include <array>
 #include <lvgl.h>
+#include <memory>
 
 namespace cc1101_chat {
 
@@ -34,12 +36,14 @@ private:
     ChatModel _model;
     ChatViewModel _chat_vm;
     ChatView _chat_view;
+    std::unique_ptr<HelpView> _help_view;
     ViewModel* _current_vm    = nullptr;
     View* _current_view       = nullptr;
     lv_group_t* _input_group  = nullptr;
     size_t _route_observer_id = 0;
     bool _quit_requested      = false;
     bool _started             = false;
+    bool _help_pressed        = false;
 
     std::array<ViewModel*, 1> _view_models;
     std::array<View*, 1> _views;

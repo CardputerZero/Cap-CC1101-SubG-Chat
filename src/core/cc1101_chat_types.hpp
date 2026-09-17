@@ -13,6 +13,7 @@ constexpr uint32_t Up    = 0x10001;
 constexpr uint32_t Down  = 0x10002;
 constexpr uint32_t Left  = 0x10003;
 constexpr uint32_t Right = 0x10004;
+constexpr uint32_t Help  = 0x10005;
 
 }  // namespace cc1101_chat_key
 
@@ -43,10 +44,10 @@ struct ChatMessage {
     uint64_t id = 0;
     std::string text;
     std::string senderName;
-    bool outgoing   = false;
-    float rssiDbm   = 0.0F;
-    uint8_t lqi     = 0;
-    bool crcOk      = true;
+    bool outgoing    = false;
+    float rssiDbm    = 0.0F;
+    uint8_t lqi      = 0;
+    bool crcOk       = true;
     bool sendPending = false;
     bool sendFailed  = false;
 };
@@ -83,9 +84,9 @@ struct ChatScrollRequest {
 
 constexpr std::size_t kMessageHistoryLimit = 64;
 // Reserves one length byte and the maximum nickname inside the 56-byte data area.
-constexpr std::size_t kMaxMessageBytes     = 45;
-constexpr std::size_t kMaxDeviceNameBytes  = 10;
-constexpr int32_t kMessageScrollStep       = 36;
+constexpr std::size_t kMaxMessageBytes    = 45;
+constexpr std::size_t kMaxDeviceNameBytes = 10;
+constexpr int32_t kMessageScrollStep      = 36;
 
 const char* pageIdName(PageId page);
 const char* radioUiStateName(RadioUiState state);

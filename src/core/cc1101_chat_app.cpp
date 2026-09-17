@@ -2,8 +2,21 @@
 
 #include <spdlog/spdlog.h>
 
+#if LV_USE_SDL
+#include <SDL2/SDL.h>
+#endif
+
 namespace cc1101_chat {
 namespace {
+
+#if LV_USE_SDL
+bool sdlHelpKeyHeld()
+{
+    int keyCount       = 0;
+    const Uint8* state = SDL_GetKeyboardState(&keyCount);
+    return state && static_cast<int>(SDL_SCANCODE_H) < keyCount && state[SDL_SCANCODE_H] != 0;
+}
+#endif
 
 bool isTextKey(const char* utf8, char expectedLowercase)
 {
@@ -99,9 +112,11 @@ void CC1101ChatApp::start()
     spdlog::info("CC1101ChatApp: start");
     _started        = true;
     _quit_requested = false;
+    _help_pressed   = false;
     lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(lv_screen_active(), LV_OPA_COVER, LV_PART_MAIN);
     setupInputGroup();
+    _help_view = std::make_unique<HelpView>(lv_screen_active(), _input_group);
     _model.start();
     _route_observer_id = _router.currentPage().observe(this, onRouteChanged);
     setCurrentPage(_router.page());
@@ -125,6 +140,7 @@ void CC1101ChatApp::stop()
         _current_vm->onExit();
         _current_vm = nullptr;
     }
+    _help_view.reset();
     _model.stop();
     if (_input_group) {
 #if LV_USE_SDL
@@ -139,11 +155,24 @@ void CC1101ChatApp::stop()
         lv_group_del(_input_group);
         _input_group = nullptr;
     }
-    _started = false;
+    _started      = false;
+    _help_pressed = false;
 }
 
 void CC1101ChatApp::onKey(uint32_t key)
 {
+    if (key == cc1101_chat_key::Help && _help_view) {
+        _help_view->toggle();
+        return;
+    }
+
+    if (_help_view && _help_view->visible()) {
+        if (key == '\x1b') {
+            _help_view->hide();
+        }
+        return;
+    }
+
     if (key == '\x1b' && _router.page() == PageId::Chat && !_chat_vm.modalActive()) {
         spdlog::info("CC1101ChatApp: quit requested");
         _quit_requested = true;
@@ -157,6 +186,24 @@ void CC1101ChatApp::onKey(uint32_t key)
 
 bool CC1101ChatApp::onLvglKeyState(uint32_t lvKey, const char* utf8, bool pressed)
 {
+#if LV_USE_SDL
+    const bool desktopHelp = isTextKey(utf8, 'h') && !textInputFocused();
+#else
+    const bool desktopHelp = false;
+#endif
+    if (lvKey == cc1101_chat_key::Help || desktopHelp) {
+#if LV_USE_SDL
+        if (!pressed && desktopHelp && sdlHelpKeyHeld()) {
+            return true;
+        }
+#endif
+        if (pressed && !_help_pressed) {
+            onKey(cc1101_chat_key::Help);
+        }
+        _help_pressed = pressed;
+        return true;
+    }
+
     if (!pressed) {
         return true;
     }
@@ -170,6 +217,10 @@ bool CC1101ChatApp::onLvglKeyState(uint32_t lvKey, const char* utf8, bool presse
             return true;
         default:
             break;
+    }
+
+    if (_help_view && _help_view->visible()) {
+        return true;
     }
 
 #if !LV_USE_SDL
@@ -234,11 +285,19 @@ bool CC1101ChatApp::onLvglKeyState(uint32_t lvKey, const char* utf8, bool presse
 
 void CC1101ChatApp::tick(uint32_t nowMs)
 {
+#if LV_USE_SDL
+    if (_help_pressed && !sdlHelpKeyHeld()) {
+        _help_pressed = false;
+    }
+#endif
     if (_current_vm) {
         _current_vm->tick(nowMs);
     }
     if (_current_view) {
         _current_view->tick(nowMs);
+    }
+    if (_help_view && _help_view->visible()) {
+        _help_view->keepFocus();
     }
 }
 
