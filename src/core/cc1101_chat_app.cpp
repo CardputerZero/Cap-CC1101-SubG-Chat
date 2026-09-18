@@ -9,6 +9,8 @@
 namespace cc1101_chat {
 namespace {
 
+constexpr uint32_t kEscHintDelayMs = 50;
+
 #if LV_USE_SDL
 bool sdlHelpKeyHeld()
 {
@@ -113,6 +115,10 @@ void CC1101ChatApp::start()
     _started        = true;
     _quit_requested = false;
     _help_pressed   = false;
+    _esc_hold_active = false;
+    _esc_hold_hint_shown = false;
+    _esc_down_ms = 0;
+    _esc_hold_hint = nullptr;
     lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(lv_screen_active(), LV_OPA_COVER, LV_PART_MAIN);
     setupInputGroup();
@@ -140,6 +146,7 @@ void CC1101ChatApp::stop()
         _current_vm->onExit();
         _current_vm = nullptr;
     }
+    hideEscHoldHint();
     _help_view.reset();
     _model.stop();
     if (_input_group) {
@@ -157,6 +164,55 @@ void CC1101ChatApp::stop()
     }
     _started      = false;
     _help_pressed = false;
+    _esc_hold_active = false;
+    _esc_hold_hint_shown = false;
+    _esc_down_ms = 0;
+}
+
+void CC1101ChatApp::showEscHoldHint()
+{
+    if (_esc_hold_hint) {
+        return;
+    }
+
+    _esc_hold_hint = lv_obj_create(lv_layer_top());
+    if (!_esc_hold_hint) {
+        return;
+    }
+    lv_obj_remove_style_all(_esc_hold_hint);
+    lv_obj_set_size(_esc_hold_hint, 224, 30);
+    lv_obj_align(_esc_hold_hint, LV_ALIGN_TOP_MID, 0, 6);
+    lv_obj_set_style_bg_color(_esc_hold_hint, lv_color_hex(0x1B1E24), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_esc_hold_hint, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_esc_hold_hint, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(_esc_hold_hint, lv_color_hex(0x5A6070), LV_PART_MAIN);
+    lv_obj_set_style_radius(_esc_hold_hint, 4, LV_PART_MAIN);
+
+    lv_obj_t* label = lv_label_create(_esc_hold_hint);
+    lv_label_set_text(label, "Hold ESC 3s to return home");
+    lv_obj_set_style_text_color(label, lv_color_hex(0xF2F4F7), LV_PART_MAIN);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_center(label);
+    lv_obj_move_foreground(_esc_hold_hint);
+}
+
+void CC1101ChatApp::hideEscHoldHint()
+{
+    if (!_esc_hold_hint) {
+        return;
+    }
+    lv_obj_del(_esc_hold_hint);
+    _esc_hold_hint = nullptr;
+}
+
+bool CC1101ChatApp::escExitAllowed()
+{
+    if (_router.page() != PageId::Chat || _chat_vm.modalActive()) {
+        return false;
+    }
+
+    const ChatSection section = _chat_vm.section().get();
+    return section == ChatSection::Messages || section == ChatSection::Info;
 }
 
 void CC1101ChatApp::onKey(uint32_t key)
@@ -173,7 +229,7 @@ void CC1101ChatApp::onKey(uint32_t key)
         return;
     }
 
-    if (key == '\x1b' && _router.page() == PageId::Chat && !_chat_vm.modalActive()) {
+    if (key == '\x1b' && escExitAllowed()) {
         spdlog::info("CC1101ChatApp: quit requested");
         _quit_requested = true;
         return;
@@ -204,14 +260,34 @@ bool CC1101ChatApp::onLvglKeyState(uint32_t lvKey, const char* utf8, bool presse
         return true;
     }
 
+    if (lvKey == LV_KEY_ESC) {
+        if (!pressed) {
+            if (_esc_hold_active) {
+                _esc_hold_active = false;
+                _esc_hold_hint_shown = false;
+                hideEscHoldHint();
+            }
+            return true;
+        }
+        if (_help_view && _help_view->visible()) {
+            onKey('\x1b');
+            return true;
+        }
+        if (escExitAllowed()) {
+            _esc_hold_active = true;
+            _esc_hold_hint_shown = false;
+            _esc_down_ms = lv_tick_get();
+            return true;
+        }
+        onKey('\x1b');
+        return true;
+    }
+
     if (!pressed) {
         return true;
     }
 
     switch (lvKey) {
-        case LV_KEY_ESC:
-            onKey('\x1b');
-            return true;
         case LV_KEY_ENTER:
             onKey('\r');
             return true;
@@ -295,6 +371,16 @@ void CC1101ChatApp::tick(uint32_t nowMs)
     }
     if (_current_view) {
         _current_view->tick(nowMs);
+    }
+    if (_esc_hold_active) {
+        if (!escExitAllowed()) {
+            _esc_hold_active = false;
+            _esc_hold_hint_shown = false;
+            hideEscHoldHint();
+        } else if (!_esc_hold_hint_shown && nowMs - _esc_down_ms >= kEscHintDelayMs) {
+            _esc_hold_hint_shown = true;
+            showEscHoldHint();
+        }
     }
     if (_help_view && _help_view->visible()) {
         _help_view->keepFocus();
