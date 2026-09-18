@@ -56,6 +56,7 @@ private:
     View* viewFor(PageId page);
     void setupInputGroup();
     void setCurrentPage(PageId page);
+    bool escExitAllowed();
     void showEscHoldHint();
     void hideEscHoldHint();
     static void onRouteChanged(void* context, const PageId& page);

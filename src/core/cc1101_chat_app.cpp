@@ -9,7 +9,7 @@
 namespace cc1101_chat {
 namespace {
 
-constexpr uint32_t kEscHintDelayMs = 500;
+constexpr uint32_t kEscHintDelayMs = 50;
 
 #if LV_USE_SDL
 bool sdlHelpKeyHeld()
@@ -205,6 +205,16 @@ void CC1101ChatApp::hideEscHoldHint()
     _esc_hold_hint = nullptr;
 }
 
+bool CC1101ChatApp::escExitAllowed()
+{
+    if (_router.page() != PageId::Chat || _chat_vm.modalActive()) {
+        return false;
+    }
+
+    const ChatSection section = _chat_vm.section().get();
+    return section == ChatSection::Messages || section == ChatSection::Info;
+}
+
 void CC1101ChatApp::onKey(uint32_t key)
 {
     if (key == cc1101_chat_key::Help && _help_view) {
@@ -219,7 +229,7 @@ void CC1101ChatApp::onKey(uint32_t key)
         return;
     }
 
-    if (key == '\x1b' && _router.page() == PageId::Chat && !_chat_vm.modalActive()) {
+    if (key == '\x1b' && escExitAllowed()) {
         spdlog::info("CC1101ChatApp: quit requested");
         _quit_requested = true;
         return;
@@ -263,7 +273,7 @@ bool CC1101ChatApp::onLvglKeyState(uint32_t lvKey, const char* utf8, bool presse
             onKey('\x1b');
             return true;
         }
-        if (_router.page() == PageId::Chat && !_chat_vm.modalActive()) {
+        if (escExitAllowed()) {
             _esc_hold_active = true;
             _esc_hold_hint_shown = false;
             _esc_down_ms = lv_tick_get();
@@ -363,7 +373,7 @@ void CC1101ChatApp::tick(uint32_t nowMs)
         _current_view->tick(nowMs);
     }
     if (_esc_hold_active) {
-        if (_router.page() != PageId::Chat || _chat_vm.modalActive()) {
+        if (!escExitAllowed()) {
             _esc_hold_active = false;
             _esc_hold_hint_shown = false;
             hideEscHoldHint();
