@@ -44,6 +44,10 @@ private:
     bool _quit_requested      = false;
     bool _started             = false;
     bool _help_pressed        = false;
+    bool _esc_hold_active     = false;
+    bool _esc_hold_hint_shown = false;
+    uint32_t _esc_down_ms     = 0;
+    lv_obj_t* _esc_hold_hint  = nullptr;
 
     std::array<ViewModel*, 1> _view_models;
     std::array<View*, 1> _views;
@@ -52,6 +56,8 @@ private:
     View* viewFor(PageId page);
     void setupInputGroup();
     void setCurrentPage(PageId page);
+    void showEscHoldHint();
+    void hideEscHoldHint();
     static void onRouteChanged(void* context, const PageId& page);
     static void onKeyboardEvent(lv_event_t* event);
 };

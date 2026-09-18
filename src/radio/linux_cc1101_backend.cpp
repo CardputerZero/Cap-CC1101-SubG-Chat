@@ -22,7 +22,7 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 constexpr auto kPowerSettle =
-    std::chrono::milliseconds{500};
+    std::chrono::milliseconds{1500};
 
 uint64_t monotonicMilliseconds()
 {
