@@ -62,8 +62,10 @@ Key controls:
 
 The device build uses the Cap CC1101 on `/dev/spidev0.1` with kernel-managed
 CS1. It does not require the CS2/GPIO22 overlay used by the Cap's NFC controller.
-On the current LED-class BSP, the app restores the pinmux and EXT5V state it
-changed before returning to APPLaunch.
+On exit, the app puts the radio to sleep and restores the G14/G15 pinmux.
+GPIO26 POWER_EN and EXT5V remain enabled: the Cap shares SPI with the LCD,
+and cutting its I/O supply can freeze the LCD while framebuffer writes still
+succeed. Supply shutdown belongs to the system, not an individual Cap app.
 
 The Debian package launches this hardware app as root through a non-interactive,
 command-specific sudo rule for members of the `gpio` group. The rule permits

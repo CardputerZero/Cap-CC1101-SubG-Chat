@@ -10,13 +10,14 @@ namespace cc1101_chat {
 namespace {
 
 constexpr uint32_t kEscHintDelayMs = 50;
+constexpr uint32_t kEscExitDelayMs = 3000;
 
 #if LV_USE_SDL
-bool sdlHelpKeyHeld()
+bool sdlKeyHeld(SDL_Scancode key)
 {
     int keyCount       = 0;
     const Uint8* state = SDL_GetKeyboardState(&keyCount);
-    return state && static_cast<int>(SDL_SCANCODE_H) < keyCount && state[SDL_SCANCODE_H] != 0;
+    return state && static_cast<int>(key) < keyCount && state[key] != 0;
 }
 #endif
 
@@ -115,6 +116,7 @@ void CC1101ChatApp::start()
     _started        = true;
     _quit_requested = false;
     _help_pressed   = false;
+    _esc_pressed    = false;
     _esc_hold_active = false;
     _esc_hold_hint_shown = false;
     _esc_down_ms = 0;
@@ -164,6 +166,7 @@ void CC1101ChatApp::stop()
     }
     _started      = false;
     _help_pressed = false;
+    _esc_pressed  = false;
     _esc_hold_active = false;
     _esc_hold_hint_shown = false;
     _esc_down_ms = 0;
@@ -249,7 +252,7 @@ bool CC1101ChatApp::onLvglKeyState(uint32_t lvKey, const char* utf8, bool presse
 #endif
     if (lvKey == cc1101_chat_key::Help || desktopHelp) {
 #if LV_USE_SDL
-        if (!pressed && desktopHelp && sdlHelpKeyHeld()) {
+        if (!pressed && desktopHelp && sdlKeyHeld(SDL_SCANCODE_H)) {
             return true;
         }
 #endif
@@ -261,7 +264,14 @@ bool CC1101ChatApp::onLvglKeyState(uint32_t lvKey, const char* utf8, bool presse
     }
 
     if (lvKey == LV_KEY_ESC) {
+#if LV_USE_SDL
+        // LVGL's SDL driver synthesizes a release after every keydown.
+        if (!pressed && sdlKeyHeld(SDL_SCANCODE_ESCAPE)) {
+            return true;
+        }
+#endif
         if (!pressed) {
+            _esc_pressed = false;
             if (_esc_hold_active) {
                 _esc_hold_active = false;
                 _esc_hold_hint_shown = false;
@@ -269,6 +279,11 @@ bool CC1101ChatApp::onLvglKeyState(uint32_t lvKey, const char* utf8, bool presse
             }
             return true;
         }
+        // A held key may repeat, including after ESC has closed a dialog.
+        if (_esc_pressed) {
+            return true;
+        }
+        _esc_pressed = true;
         if (_help_view && _help_view->visible()) {
             onKey('\x1b');
             return true;
@@ -362,8 +377,11 @@ bool CC1101ChatApp::onLvglKeyState(uint32_t lvKey, const char* utf8, bool presse
 void CC1101ChatApp::tick(uint32_t nowMs)
 {
 #if LV_USE_SDL
-    if (_help_pressed && !sdlHelpKeyHeld()) {
+    if (_help_pressed && !sdlKeyHeld(SDL_SCANCODE_H)) {
         _help_pressed = false;
+    }
+    if (_esc_pressed && !sdlKeyHeld(SDL_SCANCODE_ESCAPE)) {
+        onLvglKeyState(LV_KEY_ESC, nullptr, false);
     }
 #endif
     if (_current_vm) {
@@ -373,10 +391,15 @@ void CC1101ChatApp::tick(uint32_t nowMs)
         _current_view->tick(nowMs);
     }
     if (_esc_hold_active) {
-        if (!escExitAllowed()) {
+        if ((_help_view && _help_view->visible()) || !escExitAllowed()) {
             _esc_hold_active = false;
             _esc_hold_hint_shown = false;
             hideEscHoldHint();
+        } else if (nowMs - _esc_down_ms >= kEscExitDelayMs) {
+            _esc_hold_active = false;
+            _esc_hold_hint_shown = false;
+            hideEscHoldHint();
+            onKey('\x1b');
         } else if (!_esc_hold_hint_shown && nowMs - _esc_down_ms >= kEscHintDelayMs) {
             _esc_hold_hint_shown = true;
             showEscHoldHint();

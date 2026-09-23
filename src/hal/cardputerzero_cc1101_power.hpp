@@ -16,7 +16,8 @@ public:
     CardputerZeroCc1101Power& operator=(const CardputerZeroCc1101Power&) = delete;
 
     bool enable(std::string& error, const std::atomic_bool* cancel = nullptr);
-    void disable(bool preserve_ext5v = false) noexcept;
+    // Unpowered Cap SPI pins load the LCD bus; retain both rails when releasing ownership.
+    void disable(bool preserve_spi_power = true) noexcept;
     bool enabled() const noexcept;
 
 private:

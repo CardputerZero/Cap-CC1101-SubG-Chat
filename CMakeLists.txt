@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(M5CardputerZeroCapCC1101SubGChat VERSION 1.0.0 LANGUAGES C CXX ASM)
+project(M5CardputerZeroCapCC1101SubGChat VERSION 1.0.1 LANGUAGES C CXX ASM)
 
 option(CC1101_CHAT_USE_SDL "Use LVGL's SDL backend and mock radio" ON)
 option(BUILD_TESTING "Build CC1101 Chat tests" OFF)
@@ -226,6 +226,23 @@ set_target_properties(${CC1101_CHAT_BIN_NAME} PROPERTIES
 )
 
 if(BUILD_TESTING)
+    set(CC1101_CHAT_TEST_APP_CPP ${CC1101_CHAT_APP_CPP})
+    list(REMOVE_ITEM CC1101_CHAT_TEST_APP_CPP "${CC1101_CHAT_SRC_DIR}/main.cpp")
+    add_executable(cc1101_chat_esc_exit_tests
+        tests/esc_exit_test.cpp
+        ${CC1101_CHAT_TEST_APP_CPP}
+        src/radio/radio_backend.cpp
+        src/radio/chat_protocol.cpp
+        src/radio/radio_worker.cpp
+        src/radio/mock_radio_backend.cpp
+    )
+    target_include_directories(cc1101_chat_esc_exit_tests PRIVATE "${CC1101_CHAT_SRC_DIR}")
+    target_compile_definitions(cc1101_chat_esc_exit_tests PRIVATE CC1101_CHAT_APP_VERSION=\"${PROJECT_VERSION}\" CC1101_CHAT_USE_MOCK_RADIO=1)
+    target_link_libraries(cc1101_chat_esc_exit_tests PRIVATE
+        lvgl::lvgl smooth_ui_toolkit spdlog::spdlog Threads::Threads
+        ${CC1101_CHAT_SDL_LIBS} ${CC1101_CHAT_SYSTEM_LIBS})
+    add_test(NAME cc1101_chat_esc_exit COMMAND cc1101_chat_esc_exit_tests)
+
     enable_testing()
     add_executable(cc1101_chat_cardputer_keymap_tests
         tests/cardputer_keymap_test.cpp

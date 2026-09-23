@@ -21,6 +21,7 @@ constexpr uint8_t CMD_FSTXON        = 0x31;
 constexpr uint8_t CMD_RX            = 0x34;
 constexpr uint8_t CMD_TX            = 0x35;
 constexpr uint8_t CMD_IDLE          = 0x36;
+constexpr uint8_t CMD_POWER_DOWN    = 0x39;
 constexpr uint8_t CMD_FLUSH_RX      = 0x3A;
 constexpr uint8_t CMD_FLUSH_TX      = 0x3B;
 
@@ -558,6 +559,12 @@ void CC1101Radio::idle()
     flushRx();
     flushTx();
     selectAntenna();
+}
+
+void CC1101Radio::sleep()
+{
+    standby();
+    command(CMD_POWER_DOWN);
 }
 
 void CC1101Radio::releaseHostControlLines() noexcept

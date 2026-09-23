@@ -289,10 +289,10 @@ bool CardputerZeroCc1101Power::enable(std::string& error, const std::atomic_bool
 #endif
 }
 
-void CardputerZeroCc1101Power::disable(bool preserve_ext5v) noexcept
+void CardputerZeroCc1101Power::disable(bool preserve_spi_power) noexcept
 {
 #if defined(CC1101_CHAT_ENABLE_LINUX_RADIO) && CC1101_CHAT_ENABLE_LINUX_RADIO && defined(__linux__)
-    if (_impl->gpio26_requested) {
+    if (_impl->gpio26_requested && !preserve_spi_power) {
         try {
             _impl->gpio26.setValue(false);
         } catch (const std::exception& exception) {
@@ -306,8 +306,8 @@ void CardputerZeroCc1101Power::disable(bool preserve_ext5v) noexcept
 
     bool ext5v_cleanup_complete = true;
     if (_impl->ext5v_control == Ext5vControl::LedClass && _impl->ext5v_restore_needed) {
-        if (preserve_ext5v) {
-            spdlog::info("CC1101 power: leaving EXT5V LED class enabled for the next application");
+        if (preserve_spi_power) {
+            spdlog::info("CC1101 power: retaining EXT5V for the shared LCD SPI bus");
             _impl->ext5v_restore_needed = false;
         } else {
             try {
@@ -319,7 +319,7 @@ void CardputerZeroCc1101Power::disable(bool preserve_ext5v) noexcept
                 spdlog::warn("CC1101 power: failed to restore EXT5V LED class state: {}", exception.what());
             }
         }
-    } else if (_impl->ext5v_control == Ext5vControl::LegacyGpio) {
+    } else if (_impl->ext5v_control == Ext5vControl::LegacyGpio && !preserve_spi_power) {
         try {
             _impl->legacy_ext5v.setValue(false);
         } catch (const std::exception& exception) {
@@ -343,6 +343,12 @@ void CardputerZeroCc1101Power::disable(bool preserve_ext5v) noexcept
                 continue;
             }
             const auto& state = _impl->previous_pinctrl_states[index];
+            // Do not restore a low POWER_EN inherited from an older Cap app.
+            if (state.gpio == 26 && preserve_spi_power) {
+                _impl->pinctrl_restore_pending[index] = false;
+                spdlog::info("CC1101 power: retaining GPIO26 POWER_EN for the shared LCD SPI bus");
+                continue;
+            }
             try {
                 std::string restore_error;
                 const auto arguments = pinctrlRestoreArguments(state);
@@ -365,6 +371,8 @@ void CardputerZeroCc1101Power::disable(bool preserve_ext5v) noexcept
         }
         _impl->pinctrl_restore_needed = restore_pending;
     }
+#else
+    (void)preserve_spi_power;
 #endif
     _impl->enabled = false;
 }

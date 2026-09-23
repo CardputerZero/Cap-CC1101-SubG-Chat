@@ -134,12 +134,20 @@ public:
     {
         const bool had_hardware_state = _radio || _spi || _power.enabled();
         if (had_hardware_state) {
-            spdlog::info("CC1101 backend: shutting down radio, SPI, Cap power, and control pins");
+            spdlog::info("CC1101 backend: shutting down radio and releasing controls while retaining shared SPI power");
         }
         _receiving = false;
         if (_radio) {
-            // Teardown must not depend on a potentially wedged SPI ioctl: APPLaunch
-            // force-kills the process if graceful shutdown exceeds its deadline.
+            // Stop RF without removing the I/O supply from the shared LCD bus.
+            // The process shutdown watchdog still bounds a stalled SPI ioctl.
+            if (_open) {
+                try {
+                    _radio->sleep();
+                    spdlog::info("CC1101 backend: radio entered power-down mode");
+                } catch (const std::exception& exception) {
+                    spdlog::warn("CC1101 backend: failed to put radio to sleep: {}", exception.what());
+                }
+            }
             _radio->releaseHostControlLines();
             _radio.reset();
         }
