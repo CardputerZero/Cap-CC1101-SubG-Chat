@@ -53,6 +53,10 @@ public:
     bool sendDraft();
     bool saveDeviceName();
     bool retryRadio();
+    bool radioNoticeRequired() const { return !_radio_notice_confirmed; }
+    void confirmRadioNotice(bool skipNextTime);
+    radio::RadioSettings radioSettings() const { return _radio_settings; }
+    std::string saveRadioSettings(radio::RadioSettings settings);
 
 private:
     std::unique_ptr<radio::RadioWorker> _radio_worker;
@@ -64,6 +68,9 @@ private:
     uint64_t _next_tx_id      = 1;
     std::unordered_map<uint64_t, uint64_t> _pending_messages;
     bool _started = false;
+    radio::RadioSettings _radio_settings;
+    bool _skip_radio_notice = false;
+    bool _radio_notice_confirmed = false;
 
     uint64_t appendMessage(ChatMessage message);
     void updateMessageStatus(uint64_t messageId, bool sendPending, bool sendFailed);

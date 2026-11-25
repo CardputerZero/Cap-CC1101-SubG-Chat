@@ -44,8 +44,9 @@ void cancellableSleep(std::chrono::milliseconds duration, const CancellationToke
 
 class LinuxCc1101Backend final : public RadioBackend {
 public:
-    RadioInfo open(const CancellationToken& cancellation) override
+    RadioInfo open(RadioSettings settings, const CancellationToken& cancellation) override
     {
+        if (!settings.complete()) throw std::invalid_argument("CC1101 frequency and TX power must be configured");
         close();
         cancellableSleep(std::chrono::milliseconds(500), cancellation);
         cancellation.throwIfCancellationRequested();
@@ -85,11 +86,11 @@ public:
 
             _radio = std::make_unique<CC1101Radio>(*_spi, pins);
             RadioConfig config;
-            config.freq_mhz       = 868.0F;
+            config.freq_mhz       = settings.frequencyMhz();
             config.bit_rate_kbps  = 2.4F;
             config.freq_dev_khz   = 25.4F;
             config.rx_bw_khz      = 58.0F;
-            config.power_dbm      = 10;
+            config.power_dbm      = static_cast<int8_t>(settings.powerDbm);
             config.preamble_bytes = 16;
             spdlog::info(
                 "CC1101 backend: applying radio profile (2-FSK, frequency={:.3f} MHz, bitrate={:.3f} kbps, "

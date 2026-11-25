@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <cerrno>
+#include <charconv>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -30,6 +31,7 @@ constexpr uint32_t kCc1101SpiSpeedHz    = 500000;
 constexpr uint16_t kCc1101SyncWord      = 0x12AD;
 constexpr char kConfigDirectoryName[]   = "M5CardputerZero-Cap-CC1101-SubG-Chat";
 constexpr char kDeviceNameFileName[]    = "nickname";
+constexpr char kRadioFileName[]         = "radio";
 
 struct UserConfigLocation {
     std::filesystem::path directory;
@@ -84,10 +86,21 @@ std::string loadSavedDeviceName()
     return name;
 }
 
-bool saveDeviceNameFile(const std::string& name, std::string& error)
+UserConfigLocation radioConfigLocation()
 {
-    const auto location = userConfigLocation();
-    const auto path     = location.directory / kDeviceNameFileName;
+    auto location = userConfigLocation();
+    const char* sudoUser = std::getenv("SUDO_USER");
+    const char* config = std::getenv("XDG_CONFIG_HOME");
+    if (config && config[0] == '/' && !(sudoUser && sudoUser[0])) {
+        location.directory = std::filesystem::path(config) / kConfigDirectoryName;
+    }
+    return location;
+}
+
+bool writePreferenceFile(const UserConfigLocation& location, const char* filename, const std::string& contents,
+                         std::string& error)
+{
+    const auto path = location.directory / filename;
 
     std::error_code filesystemError;
     std::filesystem::create_directories(location.directory, filesystemError);
@@ -112,7 +125,7 @@ bool saveDeviceNameFile(const std::string& name, std::string& error)
     temporaryBuffer.push_back('\0');
     const int temporaryFd = mkstemp(temporaryBuffer.data());
     if (temporaryFd < 0) {
-        error = "cannot create temporary nickname file: " + std::string(std::strerror(errno));
+        error = "cannot create temporary configuration file: " + std::string(std::strerror(errno));
         return false;
     }
     const std::filesystem::path temporary{temporaryBuffer.data()};
@@ -122,8 +135,8 @@ bool saveDeviceNameFile(const std::string& name, std::string& error)
     };
 
     std::size_t offset = 0;
-    while (offset < name.size()) {
-        const ssize_t written = write(temporaryFd, name.data() + offset, name.size() - offset);
+    while (offset < contents.size()) {
+        const ssize_t written = write(temporaryFd, contents.data() + offset, contents.size() - offset);
         if (written < 0 && errno == EINTR) {
             continue;
         }
@@ -161,8 +174,50 @@ bool saveDeviceNameFile(const std::string& name, std::string& error)
         std::filesystem::remove(temporary, filesystemError);
         return false;
     }
-    spdlog::info("CC1101 nickname: saved to {}", path.string());
     return true;
+}
+
+bool saveDeviceNameFile(const std::string& name, std::string& error)
+{
+    const auto location = userConfigLocation();
+    if (!writePreferenceFile(location, kDeviceNameFileName, name, error)) return false;
+    spdlog::info("CC1101 nickname: saved to {}", (location.directory / kDeviceNameFileName).string());
+    return true;
+}
+
+int readConfigInteger(std::ifstream& input, int fallback)
+{
+    std::string line;
+    if (!std::getline(input, line) || line.empty()) return fallback;
+    int value = 0;
+    const auto end = line.data() + line.size();
+    const auto result = std::from_chars(line.data(), end, value);
+    return result.ec == std::errc{} && result.ptr == end ? value : fallback;
+}
+
+void loadRadioPreferences(bool& skipNotice, radio::RadioSettings& settings)
+{
+    skipNotice = false;
+    settings = {};
+    std::ifstream input(radioConfigLocation().directory / kRadioFileName);
+    std::string line;
+    if (!std::getline(input, line) || (line != "skip-notice" && line != "show-notice")) return;
+    skipNotice = line == "skip-notice";
+    settings.frequencyKhz = readConfigInteger(input, 0);
+    settings.powerDbm = readConfigInteger(input, radio::kUnsetPowerDbm);
+}
+
+bool saveRadioPreferences(bool skipNotice, radio::RadioSettings settings)
+{
+    std::string contents = skipNotice ? "skip-notice\n" : "show-notice\n";
+    if (settings.hasFrequency() || settings.hasPower()) {
+        contents += std::to_string(settings.hasFrequency() ? settings.frequencyKhz : 0) + '\n';
+        contents += std::to_string(settings.hasPower() ? settings.powerDbm : radio::kUnsetPowerDbm) + '\n';
+    }
+    std::string error;
+    if (writePreferenceFile(radioConfigLocation(), kRadioFileName, contents, error)) return true;
+    spdlog::error("CC1101 radio preferences: {}", error);
+    return false;
 }
 
 std::string currentUserName()
@@ -248,33 +303,46 @@ void ChatModel::start()
     _next_message_id = 1;
     _next_tx_id      = 1;
 
+    loadRadioPreferences(_skip_radio_notice, _radio_settings);
+    _radio_notice_confirmed = _skip_radio_notice;
+
     ChatRadioInfo info;
-    info.state       = RadioUiState::Initializing;
-    info.ready       = false;
-    info.deviceName  = loadSavedDeviceName();
+    info.deviceName = loadSavedDeviceName();
     if (info.deviceName.empty()) {
         info.deviceName = currentUserName();
     }
-    info.diagnostics = "Starting radio";
+    if (_radio_settings.hasFrequency()) info.frequencyMhz = _radio_settings.frequencyMhz();
+    if (_radio_settings.hasPower()) info.outputPowerDbm = static_cast<int8_t>(_radio_settings.powerDbm);
     _radio_info.set(std::move(info));
 
-    try {
-        if (!_radio_worker->start(true)) {
-            auto failed                 = _radio_info.get();
-            failed.state                = RadioUiState::Error;
-            failed.ready                = false;
-            failed.initializationFailed = false;
-            failed.diagnostics          = "Radio worker is already running";
-            _radio_info.set(std::move(failed));
-        }
-    } catch (const std::exception& exception) {
-        auto failed                 = _radio_info.get();
-        failed.state                = RadioUiState::Error;
-        failed.ready                = false;
-        failed.initializationFailed = true;
-        failed.diagnostics          = exception.what();
-        _radio_info.set(std::move(failed));
+    if (_radio_notice_confirmed && _radio_settings.complete()) retryRadio();
+}
+
+void ChatModel::confirmRadioNotice(bool skipNextTime)
+{
+    if (!_started || _radio_notice_confirmed) return;
+    _radio_notice_confirmed = true;
+    if (skipNextTime) {
+        _skip_radio_notice = true;
+        saveRadioPreferences(true, _radio_settings);
     }
+    if (_radio_settings.complete()) retryRadio();
+}
+
+std::string ChatModel::saveRadioSettings(radio::RadioSettings settings)
+{
+    if (!_started || !_radio_notice_confirmed || !settings.complete()) return "Select both frequency and TX power.";
+    if (settings == _radio_settings) return {};
+    if (_radio_info.get().state == RadioUiState::Initializing) return "Wait for the radio to initialize.";
+    if (!_pending_messages.empty()) return "Wait for your message to finish sending.";
+    if (!saveRadioPreferences(_skip_radio_notice, settings)) return "Could not save settings. Try again.";
+
+    // Quiesce the previous receiver and any ACK before the worker starts on
+    // the new channel. Startup itself runs off the UI thread.
+    _radio_worker->stop();
+    _radio_settings = settings;
+    retryRadio();
+    return {};
 }
 
 void ChatModel::stop()
@@ -556,7 +624,14 @@ bool ChatModel::retryRadio()
         return false;
     }
 
+    if (!_radio_notice_confirmed || !_radio_settings.complete()) {
+        setComposeStatus("Choose frequency and TX power in Info > Settings");
+        return false;
+    }
+
     auto info                 = _radio_info.get();
+    info.frequencyMhz         = _radio_settings.frequencyMhz();
+    info.outputPowerDbm       = static_cast<int8_t>(_radio_settings.powerDbm);
     info.state                = RadioUiState::Initializing;
     info.ready                = false;
     info.initializationFailed = false;
@@ -565,7 +640,7 @@ bool ChatModel::retryRadio()
 
     try {
         if (!_radio_worker->running()) {
-            if (_radio_worker->start(true)) {
+            if (_radio_worker->start(_radio_settings)) {
                 return true;
             }
         } else {

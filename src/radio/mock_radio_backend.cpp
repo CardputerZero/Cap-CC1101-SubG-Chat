@@ -60,8 +60,9 @@ void cancellableSleepUntil(Clock::time_point deadline, const CancellationToken& 
 
 class MockRadioBackend final : public RadioBackend {
 public:
-    RadioInfo open(const CancellationToken& cancellation) override
+    RadioInfo open(RadioSettings settings, const CancellationToken& cancellation) override
     {
+        if (!settings.complete()) throw std::invalid_argument("CC1101 frequency and TX power must be configured");
         close();
         cancellableSleepUntil(Clock::now() + std::chrono::milliseconds(250), cancellation);
         if (envBool("CC1101_CHAT_MOCK_INIT_FAIL", false)) {
@@ -78,11 +79,11 @@ public:
         info.backend_name     = "Mock CC1101";
         info.mock             = true;
         info.chip_version     = 0x14;
-        info.frequency_mhz    = 868.0F;
+        info.frequency_mhz    = settings.frequencyMhz();
         info.bit_rate_kbps    = 2.4F;
         info.rx_bandwidth_khz = 58.0F;
         info.deviation_khz    = 25.4F;
-        info.output_power_dbm = 10;
+        info.output_power_dbm = static_cast<int8_t>(settings.powerDbm);
         return info;
     }
 

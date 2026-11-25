@@ -33,7 +33,7 @@ public:
     RadioWorker(const RadioWorker&)            = delete;
     RadioWorker& operator=(const RadioWorker&) = delete;
 
-    bool start(bool receive_on_start = true);
+    bool start(RadioSettings settings, bool receive_on_start = true);
     void stop();
     RadioPostResult post(RadioCommand command);
     bool tryPopEvent(RadioEvent& event);
@@ -52,6 +52,7 @@ private:
     std::atomic_bool _running{false};
     std::atomic_bool _stop_requested{false};
     bool _receive_on_start              = true;
+    RadioSettings _settings;
     std::size_t _initialization_attempt = 0;
     uint32_t _next_protocol_token       = 1;
     std::deque<uint32_t> _recent_rx_tokens;

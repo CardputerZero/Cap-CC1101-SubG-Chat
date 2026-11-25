@@ -57,7 +57,8 @@ HelpView::HelpView(lv_obj_t* parent, lv_group_t* inputGroup)
         "Connect Cap CC1101 to send and receive messages over Sub-GHz frequencies, with support for group "
         "communication between multiple devices.\n\n"
         "Keyboard: Compose a message\n"
-        "F / X / Z / C: Switch between screens");
+        "Z / C: Switch pages   F / X: Scroll\n"
+        "Info, then S: Radio settings");
     setLabelStyle(*_body, 12, 30, 276, 109, &lv_font_montserrat_12, 0xDDE0E4);
     _footer->setText("Fn+H / Esc: close");
     setLabelStyle(*_footer, 12, 141, 276, 14, &lv_font_montserrat_10, 0x9A9FA5, LV_TEXT_ALIGN_RIGHT);

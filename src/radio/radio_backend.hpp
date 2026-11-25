@@ -15,7 +15,7 @@ public:
     RadioBackend(const RadioBackend&)            = delete;
     RadioBackend& operator=(const RadioBackend&) = delete;
 
-    virtual RadioInfo open(const CancellationToken& cancellation)                                     = 0;
+    virtual RadioInfo open(RadioSettings settings, const CancellationToken& cancellation)             = 0;
     virtual void close() noexcept                                                                     = 0;
     virtual void startReceive(const CancellationToken& cancellation)                                  = 0;
     virtual void stopReceive()                                                                        = 0;

@@ -335,11 +335,9 @@ void CC1101Radio::begin(const RadioConfig& cfg, const std::atomic_bool* cancel)
     writeRegRaw(REG_IOCFG0, GDOX_HIGH_Z);
     writeRegRaw(REG_IOCFG2, GDOX_HIGH_Z);
     configurePacketMode();
-    setFrequency(cfg_.freq_mhz);
     setBitRate(cfg_.bit_rate_kbps);
     setRxBandwidth(cfg_.rx_bw_khz);
     setFrequencyDeviation(cfg_.freq_dev_khz);
-    setOutputPower(cfg_.power_dbm);
     setRegBits(REG_PKTCTRL0, LENGTH_VARIABLE, 1, 0);
     writeRegRaw(REG_PKTLEN, 0xFF);
     setPreamble(cfg_.preamble_bytes);
@@ -348,6 +346,9 @@ void CC1101Radio::begin(const RadioConfig& cfg, const std::atomic_bool* cancel)
     setRegBits(REG_PKTCTRL0, WHITE_DATA_OFF, 6, 6);
     setSyncWord();
     applyRadioLib868LowConfig();
+    // Apply user-selected RF parameters after the legacy modem register dump.
+    setFrequency(cfg_.freq_mhz);
+    setOutputPower(cfg_.power_dbm);
     flushRx();
     flushTx();
     selectAntenna();
@@ -474,9 +475,6 @@ void CC1101Radio::applyRadioLib868LowConfig()
     writeRegRaw(REG_CHANNR, 0x00);
     writeRegRaw(REG_FSCTRL1, 0x0F);
     writeRegRaw(REG_FSCTRL0, 0x00);
-    writeRegRaw(REG_FREQ2, 0x21);
-    writeRegRaw(REG_FREQ1, 0x62);
-    writeRegRaw(REG_FREQ0, 0x76);
     writeRegRaw(REG_MDMCFG4, 0xF6);
     writeRegRaw(REG_MDMCFG3, 0x83);
     writeRegRaw(REG_MDMCFG2, 0x02);
@@ -508,25 +506,13 @@ void CC1101Radio::applyRadioLib868LowConfig()
     writeRegRaw(REG_TEST2, 0x88);
     writeRegRaw(REG_TEST1, 0x31);
     writeRegRaw(REG_TEST0, 0x0B);
-    writeRegRaw(REG_PATABLE, 0xC2);
 }
 
 void CC1101Radio::selectAntenna()
 {
-    bool sw0     = true;
-    uint8_t gdo2 = 0x6F;
-    if (cfg_.freq_mhz < 374.0f) {
-        sw0  = false;
-        gdo2 = 0x6F;
-    } else if (cfg_.freq_mhz < 650.5f) {
-        sw0  = true;
-        gdo2 = 0x2F;
-    } else {
-        sw0  = true;
-        gdo2 = 0x6F;
-    }
-    if (rf_sw0_.valid()) rf_sw0_.setValue(sw0);
-    writeRegRaw(REG_IOCFG2, gdo2);
+    const auto antenna = cc1101_driver::antennaSelection(cfg_.freq_mhz);
+    if (rf_sw0_.valid()) rf_sw0_.setValue(antenna.sw0);
+    writeRegRaw(REG_IOCFG2, antenna.iocfg2);
 }
 
 void CC1101Radio::flushRx()
@@ -889,14 +875,7 @@ void CC1101Radio::getExpMant(float target, uint16_t mant_offset, uint8_t div_exp
 
 uint8_t CC1101Radio::paTableValue(float freq_mhz, int8_t power_dbm)
 {
-    constexpr int8_t allowed[8]   = {-30, -20, -15, -10, 0, 5, 7, 10};
-    constexpr uint8_t table[8][4] = {{0x12, 0x12, 0x03, 0x03}, {0x0D, 0x0E, 0x0F, 0x0E}, {0x1C, 0x1D, 0x1E, 0x1E},
-                                     {0x34, 0x34, 0x27, 0x27}, {0x51, 0x60, 0x50, 0x8E}, {0x85, 0x84, 0x81, 0xCD},
-                                     {0xCB, 0xC8, 0xCB, 0xC7}, {0xC2, 0xC0, 0xC2, 0xC0}};
-    int f                         = freq_mhz < 374.0f ? 0 : (freq_mhz < 650.5f ? 1 : (freq_mhz < 891.5f ? 2 : 3));
-    for (size_t i = 0; i < 8; ++i) {
-        if (allowed[i] == power_dbm) return table[i][f];
-    }
+    if (const auto value = cc1101_driver::paTableValue(freq_mhz, power_dbm)) return *value;
     throw std::runtime_error("invalid power; allowed: -30,-20,-15,-10,0,5,7,10 dBm");
 }
 

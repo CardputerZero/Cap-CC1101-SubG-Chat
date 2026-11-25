@@ -23,7 +23,8 @@ bool isNextKey(uint32_t key)
 
 }  // namespace
 
-ChatViewModel::ChatViewModel(CC1101ChatRouter& router, ChatModel& model) : ViewModel(router), _model(model)
+ChatViewModel::ChatViewModel(CC1101ChatRouter& router, ChatModel& model, std::function<void()> openRadioSettings)
+    : ViewModel(router), _model(model), _open_radio_settings(std::move(openRadioSettings))
 {
 }
 
@@ -32,7 +33,9 @@ void ChatViewModel::onEnter()
     _model.clearDraft();
     _editor_mode.set(EditorMode::None);
     const auto& info = _model.radioInfo().get();
-    _section.set(info.state == RadioUiState::Error ? ChatSection::Info : ChatSection::Messages);
+    _section.set(info.state == RadioUiState::Error || info.state == RadioUiState::SetupRequired
+                     ? ChatSection::Info
+                     : ChatSection::Messages);
     _last_state                 = info.state;
     _last_initialization_failed = info.state == RadioUiState::Error && info.initializationFailed;
     _initialization_dialog_active.set(_last_initialization_failed);
@@ -75,6 +78,10 @@ void ChatViewModel::onKey(uint32_t key)
     if (_section.get() == ChatSection::Info && _model.radioInfo().get().state == RadioUiState::Error &&
         (key == 'r' || key == 'R')) {
         retryRadio();
+        return;
+    }
+    if (_section.get() == ChatSection::Info && (key == 's' || key == 'S')) {
+        openRadioSettings();
         return;
     }
 
@@ -144,8 +151,17 @@ void ChatViewModel::tick(uint32_t nowMs)
 
 void ChatViewModel::openCompose(char firstCharacter)
 {
+    if (_model.radioInfo().get().state == RadioUiState::SetupRequired) {
+        _section.set(ChatSection::Info);
+        return;
+    }
     _model.beginCompose(firstCharacter);
     _editor_mode.set(EditorMode::Message);
+}
+
+void ChatViewModel::openRadioSettings()
+{
+    if (!modalActive() && _section.get() == ChatSection::Info) _open_radio_settings();
 }
 
 void ChatViewModel::setDraft(std::string draft)

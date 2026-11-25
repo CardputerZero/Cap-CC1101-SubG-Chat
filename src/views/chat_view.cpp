@@ -703,6 +703,9 @@ public:
           _change_name(std::make_unique<ActionButton>(
               _panel->raw_ptr(), Frame{188, 20, 132, 20}, "Enter: Nickname", 0xFED40D, 0x5E4D00,
               [&viewModel]() { viewModel.openDeviceNameEditor(); }, &lv_font_montserrat_14)),
+          _settings(std::make_unique<ActionButton>(
+              _panel->raw_ptr(), Frame{207, 0, 108, 18}, "S: Settings", 0x272727, 0xFED40D,
+              [&viewModel]() { viewModel.openRadioSettings(); }, &lv_font_montserrat_14)),
           _top_divider(std::make_unique<Panel>(
               _panel->raw_ptr(),
               Frame{kInfoDividerInset, kInfoTopDividerY, kScreenWidth - kInfoDividerInset * 2, 1}, 0x25272B,
@@ -761,6 +764,7 @@ public:
                 break;
             case RadioUiState::Sending:
             case RadioUiState::Initializing:
+            case RadioUiState::SetupRequired:
                 stateColor = 0xC9A45C;
                 break;
             case RadioUiState::Error:
@@ -789,8 +793,8 @@ public:
         std::snprintf(value, sizeof(value), "%u", static_cast<unsigned>(info.lqi));
         _rows[infoRowIndex(InfoRowId::Lqi)]->setValue(value);
 
-        std::snprintf(value, sizeof(value), "%.3f MHz", info.frequencyMhz);
-        _rows[infoRowIndex(InfoRowId::Link)]->setValue(value);
+        if (info.frequencyMhz > 0.0F) std::snprintf(value, sizeof(value), "%.3f MHz", info.frequencyMhz);
+        _rows[infoRowIndex(InfoRowId::Link)]->setValue(info.frequencyMhz > 0.0F ? value : "Unset");
 
         const std::string appVersion = std::string("v") + CC1101_CHAT_APP_VERSION;
         _rows[infoRowIndex(InfoRowId::Version)]->setValue(appVersion);
@@ -802,14 +806,15 @@ public:
             _rows[infoRowIndex(InfoRowId::Bandwidth)]->setValue(value);
             std::snprintf(value, sizeof(value), "%.1fk", info.deviationKhz);
             _rows[infoRowIndex(InfoRowId::Deviation)]->setValue(value);
-            std::snprintf(value, sizeof(value), "%d dBm", static_cast<int>(info.outputPowerDbm));
-            _rows[infoRowIndex(InfoRowId::Power)]->setValue(value);
         } else {
             _rows[infoRowIndex(InfoRowId::Rate)]->setValue("--");
             _rows[infoRowIndex(InfoRowId::Bandwidth)]->setValue("--");
             _rows[infoRowIndex(InfoRowId::Deviation)]->setValue("--");
-            _rows[infoRowIndex(InfoRowId::Power)]->setValue("--");
         }
+        if (info.outputPowerDbm != radio::kUnsetPowerDbm)
+            std::snprintf(value, sizeof(value), "%d dBm", static_cast<int>(info.outputPowerDbm));
+        _rows[infoRowIndex(InfoRowId::Power)]->setValue(
+            info.outputPowerDbm != radio::kUnsetPowerDbm ? value : "Unset");
 
         if (info.spiSpeedHz > 0 && info.syncWord > 0) {
             std::snprintf(value, sizeof(value), "%zuB", kMaxMessageBytes);
@@ -827,7 +832,10 @@ public:
         }
 
         const bool sendFailed = info.diagnostics.rfind("Send failed:", 0) == 0;
-        if ((info.state == RadioUiState::Error || sendFailed) && !info.diagnostics.empty()) {
+        if (info.state == RadioUiState::SetupRequired) {
+            _stats_value->setText("Set frequency and TX power to use radio");
+            _stats_value->setTextColor(lv_color_hex(0xC9A45C));
+        } else if ((info.state == RadioUiState::Error || sendFailed) && !info.diagnostics.empty()) {
             _stats_value->setText(info.diagnostics);
             _stats_value->setTextColor(lv_color_hex(0xD96C6C));
         } else {
@@ -860,6 +868,7 @@ private:
     std::unique_ptr<Panel> _status_dot;
     std::unique_ptr<TextLabel> _status_label;
     std::unique_ptr<ActionButton> _change_name;
+    std::unique_ptr<ActionButton> _settings;
     std::unique_ptr<Panel> _top_divider;
     std::unique_ptr<Panel> _bottom_divider;
     std::unique_ptr<TextLabel> _stats_value;

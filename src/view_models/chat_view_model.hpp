@@ -2,13 +2,14 @@
 
 #include "models/chat_model.hpp"
 #include "view_models/view_model.hpp"
+#include <functional>
 #include <tools/observable/single_observable.hpp>
 
 namespace cc1101_chat {
 
 class ChatViewModel : public ViewModel {
 public:
-    ChatViewModel(CC1101ChatRouter& router, ChatModel& model);
+    ChatViewModel(CC1101ChatRouter& router, ChatModel& model, std::function<void()> openRadioSettings);
 
     PageId pageId() const override
     {
@@ -72,9 +73,11 @@ public:
     void saveDeviceName();
     void dismissInitializationDialog();
     void retryRadio();
+    void openRadioSettings();
 
 private:
     ChatModel& _model;
+    std::function<void()> _open_radio_settings;
     smooth_ui_toolkit::SingleObservable<ChatSection> _section{ChatSection::Messages};
     smooth_ui_toolkit::SingleObservable<ChatScrollRequest> _scroll_request{ChatScrollRequest{}};
     smooth_ui_toolkit::SingleObservable<EditorMode> _editor_mode{EditorMode::None};

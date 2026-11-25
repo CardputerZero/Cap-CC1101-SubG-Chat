@@ -97,7 +97,11 @@ bool handleFocusedTextInput(uint32_t lvKey, const char* utf8)
 }  // namespace
 
 CC1101ChatApp::CC1101ChatApp()
-    : _chat_vm(_router, _model), _chat_view(_chat_vm), _view_models{&_chat_vm}, _views{&_chat_view}
+    : _chat_vm(_router, _model, [this] {
+          if (_radio_setup && !_radio_setup->visible())
+              _radio_setup->showSettings(_model.radioSettings(), false);
+      }),
+      _chat_view(_chat_vm), _view_models{&_chat_vm}, _views{&_chat_view}
 {
 }
 
@@ -128,6 +132,23 @@ void CC1101ChatApp::start()
     _model.start();
     _route_observer_id = _router.currentPage().observe(this, onRouteChanged);
     setCurrentPage(_router.page());
+    _radio_setup = std::make_unique<RadioSetupView>(
+        lv_screen_active(),
+        [this](bool skip) {
+            _model.confirmRadioNotice(skip);
+            showInitialRadioSetup();
+        },
+        [this](radio::RadioSettings settings) { return _model.saveRadioSettings(settings); });
+    if (_model.radioNoticeRequired())
+        _radio_setup->showNotice();
+    else
+        showInitialRadioSetup();
+}
+
+void CC1101ChatApp::showInitialRadioSetup()
+{
+    const auto settings = _model.radioSettings();
+    if (!settings.complete()) _radio_setup->showSettings(settings, true);
 }
 
 void CC1101ChatApp::stop()
@@ -149,6 +170,7 @@ void CC1101ChatApp::stop()
         _current_vm = nullptr;
     }
     hideEscHoldHint();
+    _radio_setup.reset();
     _help_view.reset();
     _model.stop();
     if (_input_group) {
@@ -210,7 +232,7 @@ void CC1101ChatApp::hideEscHoldHint()
 
 bool CC1101ChatApp::escExitAllowed()
 {
-    if (_router.page() != PageId::Chat || _chat_vm.modalActive()) {
+    if (_router.page() != PageId::Chat || _chat_vm.modalActive() || (_radio_setup && _radio_setup->visible())) {
         return false;
     }
 
@@ -220,6 +242,11 @@ bool CC1101ChatApp::escExitAllowed()
 
 void CC1101ChatApp::onKey(uint32_t key)
 {
+    if (_radio_setup && _radio_setup->visible()) {
+        if (!_radio_setup->onKey(key) && key == '\x1b') _quit_requested = true;
+        return;
+    }
+
     if (key == cc1101_chat_key::Help && _help_view) {
         _help_view->toggle();
         return;

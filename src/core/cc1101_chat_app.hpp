@@ -5,6 +5,7 @@
 #include "view_models/chat_view_model.hpp"
 #include "views/chat_view.hpp"
 #include "views/help_view.hpp"
+#include "views/radio_setup_view.hpp"
 #include "views/view.hpp"
 #include <array>
 #include <lvgl.h>
@@ -37,6 +38,7 @@ private:
     ChatViewModel _chat_vm;
     ChatView _chat_view;
     std::unique_ptr<HelpView> _help_view;
+    std::unique_ptr<RadioSetupView> _radio_setup;
     ViewModel* _current_vm    = nullptr;
     View* _current_view       = nullptr;
     lv_group_t* _input_group  = nullptr;
@@ -57,6 +59,7 @@ private:
     View* viewFor(PageId page);
     void setupInputGroup();
     void setCurrentPage(PageId page);
+    void showInitialRadioSetup();
     bool escExitAllowed();
     void showEscHoldHint();
     void hideEscHoldHint();

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "radio/radio_settings.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -33,6 +35,7 @@ enum class EditorMode {
 };
 
 enum class RadioUiState {
+    SetupRequired,
     Initializing,
     Receiving,
     Sending,
@@ -53,13 +56,13 @@ struct ChatMessage {
 };
 
 struct ChatRadioInfo {
-    RadioUiState state        = RadioUiState::Initializing;
+    RadioUiState state        = RadioUiState::SetupRequired;
     bool ready                = false;
     bool initializationFailed = false;
     std::string deviceName{"CC1101"};
     std::string spiDevice{"/dev/spidev0.1"};
     std::string chipVersion{"--"};
-    float frequencyMhz    = 868.0F;
+    float frequencyMhz    = 0.0F;
     float bitRateKbps     = 0.0F;
     float rxBandwidthKhz  = 0.0F;
     float deviationKhz    = 0.0F;
@@ -67,13 +70,13 @@ struct ChatRadioInfo {
     uint32_t spiSpeedHz   = 0;
     uint16_t syncWord     = 0;
     uint8_t lqi           = 0;
-    int8_t outputPowerDbm = 0;
+    int8_t outputPowerDbm = radio::kUnsetPowerDbm;
     bool lastCrcOk        = true;
     uint64_t rxCount      = 0;
     uint64_t txCount      = 0;
     uint64_t droppedCount = 0;
-    std::string link{"868 MHz / 2-FSK low"};
-    std::string diagnostics{"Starting radio"};
+    std::string link;
+    std::string diagnostics{"Choose frequency and TX power"};
 };
 
 struct ChatScrollRequest {

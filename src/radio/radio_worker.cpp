@@ -86,8 +86,11 @@ RadioWorker::~RadioWorker()
     stop();
 }
 
-bool RadioWorker::start(bool receive_on_start)
+bool RadioWorker::start(RadioSettings settings, bool receive_on_start)
 {
+    if (!settings.complete()) {
+        return false;
+    }
     std::lock_guard<std::mutex> lifecycle_lock(_lifecycle_mutex);
     if (_running.load(std::memory_order_acquire)) {
         return false;
@@ -106,6 +109,7 @@ bool RadioWorker::start(bool receive_on_start)
         _pending_dropped_events = 0;
     }
 
+    _settings              = settings;
     _receive_on_start       = receive_on_start;
     _initialization_attempt = 0;
     _next_protocol_token    = randomProtocolToken();
@@ -255,7 +259,7 @@ bool RadioWorker::initializeBackend(bool receive_requested, const CancellationTo
     pushState(RadioState::Initializing, "Initializing CC1101");
     _backend->close();
     try {
-        RadioInfo info = _backend->open(cancellation);
+        RadioInfo info = _backend->open(_settings, cancellation);
         spdlog::info(
             "CC1101 radio: backend open after {} ms (backend={}, version=0x{:02X}, frequency={:.3f} MHz, "
             "bitrate={:.3f} kbps, bandwidth={:.1f} kHz, deviation={:.1f} kHz, power={} dBm)",

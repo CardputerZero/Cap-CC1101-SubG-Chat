@@ -26,5 +26,17 @@ int main()
     require(!rxFifoOverflowed(0x3F), "a normal RX byte count was treated as overflow");
     require(rxFifoOverflowed(0x80), "the RX FIFO overflow flag was ignored");
     require(rxFifoByteCount(0xBF) == 0x3F, "the RX FIFO byte count included the overflow flag");
+    const auto low = antennaSelection(315.0F);
+    const auto mid = antennaSelection(433.92F);
+    const auto high = antennaSelection(915.0F);
+    require(!low.sw0 && low.iocfg2 == 0x6F, "315 MHz must select the low-band matching path");
+    require(mid.sw0 && mid.iocfg2 == 0x2F, "433 MHz must select the mid-band matching path");
+    require(high.sw0 && high.iocfg2 == 0x6F, "915 MHz must select the high-band matching path");
+    require(paTableValue(315.0F, 0) == 0x51, "315 MHz must use its own PA table column");
+    require(paTableValue(433.92F, 0) == 0x60, "433 MHz must use its own PA table column");
+    require(paTableValue(868.0F, 10) == 0xC2, "legacy 868 MHz / 10 dBm must keep its PA register value");
+    require(paTableValue(868.0F, 0) == 0x50, "changing the 868 MHz power must select a different PA value");
+    require(paTableValue(915.0F, 0) == 0x8E, "915 MHz must use its own PA table column");
+    require(!paTableValue(868.0F, 22), "power values outside the Cap presets must be rejected");
     return 0;
 }

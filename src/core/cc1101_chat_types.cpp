@@ -14,6 +14,8 @@ const char* pageIdName(PageId page)
 const char* radioUiStateName(RadioUiState state)
 {
     switch (state) {
+        case RadioUiState::SetupRequired:
+            return "SETUP NEEDED";
         case RadioUiState::Initializing:
             return "INITIALIZING";
         case RadioUiState::Receiving:

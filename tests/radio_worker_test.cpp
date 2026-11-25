@@ -16,6 +16,7 @@ namespace {
 
 using namespace cc1101_chat::radio;
 using Clock = std::chrono::steady_clock;
+constexpr RadioSettings kSettings{433920, 5};
 
 void require(bool condition, const char* message)
 {
@@ -46,8 +47,9 @@ public:
     {
     }
 
-    RadioInfo open(const CancellationToken&) override
+    RadioInfo open(RadioSettings settings, const CancellationToken&) override
     {
+        require(settings == kSettings, "selected settings did not reach the backend");
         _open = true;
         return RadioInfo{};
     }
@@ -114,7 +116,7 @@ public:
     {
     }
 
-    RadioInfo open(const CancellationToken&) override
+    RadioInfo open(RadioSettings, const CancellationToken&) override
     {
         _open = true;
         _pending.push_back(_data);
@@ -183,7 +185,7 @@ public:
     {
     }
 
-    RadioInfo open(const CancellationToken&) override
+    RadioInfo open(RadioSettings, const CancellationToken&) override
     {
         _open = true;
         return RadioInfo{};
@@ -260,7 +262,12 @@ int main()
 
     auto state = std::make_shared<BackendState>();
     RadioWorker worker(std::make_unique<RetryBackend>(state));
-    require(worker.start(true), "worker did not start");
+    require(!worker.start({}), "worker started with both settings missing");
+    require(!worker.start({433920}), "worker started without TX power");
+    require(!worker.start({0, 0}), "worker started without a frequency");
+    require(!worker.start({433921, 5}), "worker started with an unlisted frequency");
+    require(!worker.start({433920, 22}), "worker started with an unlisted TX power");
+    require(worker.start(kSettings), "worker did not start");
 
     RadioSendCommand send;
     send.id          = 42;
@@ -288,7 +295,7 @@ int main()
     auto receiver_state      = std::make_shared<ReceiverState>();
     const auto receiver_data = protocol::encodeData(0x102030, {'i', 'n', 'b', 'o', 'x'}, "Bob");
     RadioWorker receiver(std::make_unique<ReceiverBackend>(receiver_state, receiver_data));
-    require(receiver.start(true), "receiver worker did not start");
+    require(receiver.start(kSettings), "receiver worker did not start");
 
     std::size_t received_messages = 0;
     std::string received_sender;
@@ -317,7 +324,7 @@ int main()
 
     auto failure_state = std::make_shared<FailureRecoveryState>();
     RadioWorker failure_worker(std::make_unique<FailureRecoveryBackend>(failure_state));
-    require(failure_worker.start(true), "failure recovery worker did not start");
+    require(failure_worker.start(kSettings), "failure recovery worker did not start");
 
     RadioSendCommand failed_send;
     failed_send.id      = 77;

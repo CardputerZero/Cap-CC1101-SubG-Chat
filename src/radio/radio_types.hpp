@@ -1,5 +1,7 @@
 #pragma once
 
+#include "radio/radio_settings.hpp"
+
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -27,11 +29,11 @@ struct RadioInfo {
     std::string backend_name;
     bool mock               = false;
     uint8_t chip_version    = 0;
-    float frequency_mhz     = 868.0F;
+    float frequency_mhz     = 0.0F;
     float bit_rate_kbps     = 2.4F;
     float rx_bandwidth_khz  = 58.0F;
     float deviation_khz     = 25.4F;
-    int8_t output_power_dbm = 10;
+    int8_t output_power_dbm = kUnsetPowerDbm;
 };
 
 struct RadioPacket {

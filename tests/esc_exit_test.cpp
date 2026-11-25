@@ -2,6 +2,7 @@
 
 #include <core/hal/hal.hpp>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 
 #if LV_USE_SDL
@@ -42,6 +43,15 @@ void advance(App& app, uint32_t elapsed)
     app.tick(now_ms);
 }
 
+void startWithSetupSkipped(App& app)
+{
+    app.start();
+    app.onKey('\r');
+    esc(app, true);
+    esc(app, false);
+    require(!app.quitRequested(), "skipping radio setup must leave the app open");
+}
+
 void checkHold(App& app)
 {
     esc(app, true);
@@ -56,7 +66,7 @@ void checkHold(App& app)
 void testExit()
 {
     App app;
-    app.start();
+    startWithSetupSkipped(app);
     esc(app, true);
     advance(app, 1000);
     esc(app, false);
@@ -73,7 +83,7 @@ void testExit()
 
     esc(app, true);
     app.stop();
-    app.start();
+    startWithSetupSkipped(app);
     advance(app, 4000);
     require(!app.quitRequested(), "restarting must clear the previous hold and exit request");
     esc(app, false);
@@ -83,7 +93,7 @@ void testExit()
 void testNavigation()
 {
     App app;
-    app.start();
+    startWithSetupSkipped(app);
     app.onKey(cc1101_chat::cc1101_chat_key::Help);
     esc(app, true);
     esc(app, true);
@@ -111,7 +121,7 @@ void testNavigation()
 void testTickWrapAndSyntheticRelease()
 {
     App app;
-    app.start();
+    startWithSetupSkipped(app);
     now_ms = UINT32_MAX - 1000;
     esc(app, true);
 #if LV_USE_SDL
@@ -125,6 +135,10 @@ void testTickWrapAndSyntheticRelease()
 
 int main()
 {
+    char configRoot[] = "/tmp/cc1101-chat-test-config.XXXXXX";
+    require(mkdtemp(configRoot) != nullptr, "temporary config directory could not be created");
+    require(setenv("XDG_CONFIG_HOME", configRoot, 1) == 0, "could not isolate radio preferences");
+    unsetenv("SUDO_USER");
     lv_init();
     lv_tick_set_cb([] { return now_ms; });
     smooth_ui_toolkit::ui_hal::on_get_tick([] { return now_ms; });
@@ -134,5 +148,6 @@ int main()
     testTickWrapAndSyntheticRelease();
     lv_display_delete(display);
     lv_deinit();
+    std::filesystem::remove_all(configRoot);
     std::cout << "ESC exit tests passed\n";
 }
