@@ -26,6 +26,9 @@ int main()
     require(!rxFifoOverflowed(0x3F), "a normal RX byte count was treated as overflow");
     require(rxFifoOverflowed(0x80), "the RX FIFO overflow flag was ignored");
     require(rxFifoByteCount(0xBF) == 0x3F, "the RX FIFO byte count included the overflow flag");
+    require(preambleQualityBits(16) == 0x60, "a 16-bit preamble must use a 12-bit quality threshold");
+    require(preambleQualityBits(24) == 0xA0, "a 24-bit preamble must use a 20-bit quality threshold");
+    require(preambleQualityBits(48) == 0xE0, "the preamble quality threshold must fit the 3-bit field");
     const auto low = antennaSelection(315.0F);
     const auto mid = antennaSelection(433.92F);
     const auto high = antennaSelection(915.0F);

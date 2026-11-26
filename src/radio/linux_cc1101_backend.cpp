@@ -91,7 +91,7 @@ public:
             config.freq_dev_khz   = 25.4F;
             config.rx_bw_khz      = 58.0F;
             config.power_dbm      = static_cast<int8_t>(settings.powerDbm);
-            config.preamble_bytes = 16;
+            config.preamble_bits  = 16;
             spdlog::info(
                 "CC1101 backend: applying radio profile (2-FSK, frequency={:.3f} MHz, bitrate={:.3f} kbps, "
                 "bandwidth={:.1f} kHz, deviation={:.1f} kHz, power={} dBm, sync=0x12AD)",

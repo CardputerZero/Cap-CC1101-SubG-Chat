@@ -2,6 +2,7 @@
 
 #include "radio/radio_settings.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 
@@ -40,6 +41,14 @@ constexpr std::optional<uint8_t> paTableValue(float frequencyMhz, int powerDbm) 
     if (index >= kPowersDbm.size()) return std::nullopt;
     const int band = frequencyMhz < 374.0F ? 0 : (frequencyMhz < 650.5F ? 1 : (frequencyMhz < 891.5F ? 2 : 3));
     return table[index][band];
+}
+
+constexpr uint8_t preambleQualityBits(uint8_t preamble_bits) noexcept
+{
+    // Like RadioLib, leave four bits of margin for sync detection. PQT is
+    // encoded in four-bit steps in PKTCTRL1[7:5].
+    const int pqt = std::clamp((preamble_bits - 4) / 4, 0, 7);
+    return static_cast<uint8_t>(pqt << 5);
 }
 
 constexpr uint8_t persistentReceiveMcsm1(uint8_t current) noexcept

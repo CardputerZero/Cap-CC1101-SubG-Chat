@@ -23,7 +23,7 @@ struct RadioConfig {
     float freq_dev_khz     = 25.4f;
     float rx_bw_khz        = 58.0f;
     int8_t power_dbm       = 10;
-    uint8_t preamble_bytes = 16;
+    uint8_t preamble_bits  = 16;
 };
 
 struct RxPacket {
@@ -107,7 +107,7 @@ private:
     void setRxBandwidth(float rx_bw_khz);
     void setFrequencyDeviation(float dev_khz);
     void setOutputPower(int8_t power_dbm);
-    void setPreamble(uint8_t preamble_bytes);
+    void setPreamble(uint8_t preamble_bits);
     void setSyncWord(uint8_t msb = 0x12, uint8_t lsb = 0xAD);
     void applyRadioLib868LowConfig();
     void flushRx();

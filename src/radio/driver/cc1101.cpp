@@ -123,9 +123,9 @@ std::string hexByte(uint8_t value)
     return result;
 }
 
-uint8_t preambleValue(uint8_t bytes)
+uint8_t preambleValue(uint8_t bits)
 {
-    switch (bytes) {
+    switch (bits) {
         case 16:
             return 0x00;
         case 24:
@@ -340,7 +340,7 @@ void CC1101Radio::begin(const RadioConfig& cfg, const std::atomic_bool* cancel)
     setFrequencyDeviation(cfg_.freq_dev_khz);
     setRegBits(REG_PKTCTRL0, LENGTH_VARIABLE, 1, 0);
     writeRegRaw(REG_PKTLEN, 0xFF);
-    setPreamble(cfg_.preamble_bytes);
+    setPreamble(cfg_.preamble_bits);
     setRegBits(REG_MDMCFG2, MOD_FORMAT_2_FSK, 6, 4);
     setRegBits(REG_MDMCFG2, MANCHESTER_OFF, 3, 3);
     setRegBits(REG_PKTCTRL0, WHITE_DATA_OFF, 6, 6);
@@ -440,11 +440,11 @@ void CC1101Radio::setOutputPower(int8_t power_dbm)
     writeRegRaw(REG_PATABLE, paTableValue(cfg_.freq_mhz, power_dbm));
 }
 
-void CC1101Radio::setPreamble(uint8_t preamble_bytes)
+void CC1101Radio::setPreamble(uint8_t preamble_bits)
 {
-    uint8_t pqt = std::min<uint8_t>(7, preamble_bytes / 4);
-    setRegBits(REG_PKTCTRL1, static_cast<uint8_t>(pqt << 5), 7, 5);
-    setRegBits(REG_MDMCFG1, preambleValue(preamble_bytes), 6, 4);
+    const uint8_t length = preambleValue(preamble_bits);
+    setRegBits(REG_PKTCTRL1, cc1101_driver::preambleQualityBits(preamble_bits), 7, 5);
+    setRegBits(REG_MDMCFG1, length, 6, 4);
 }
 
 void CC1101Radio::setSyncWord(uint8_t msb, uint8_t lsb)
